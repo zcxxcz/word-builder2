@@ -1,0 +1,391 @@
+.wordlist-page {
+    padding: 20px 16px 80px;
+    max-width: 480px;
+    margin: 0 auto;
+}
+
+.wordlist-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 16px;
+}
+
+.wordlist-header h1 {
+    font-size: 28px;
+    font-weight: 700;
+    color: var(--text-primary);
+    margin: 0;
+}
+
+.wordlist-actions {
+    display: flex;
+    gap: 8px;
+}
+
+.btn-icon {
+    width: 40px;
+    height: 40px;
+    border-radius: 12px;
+    border: none;
+    background: var(--surface);
+    font-size: 18px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    box-shadow: var(--shadow-sm);
+    transition: transform 0.15s;
+}
+
+.btn-icon:hover {
+    transform: scale(1.05);
+}
+
+.wordlist-tabs {
+    display: flex;
+    gap: 4px;
+    background: var(--surface-dim);
+    border-radius: 12px;
+    padding: 4px;
+    margin-bottom: 16px;
+}
+
+.tab-btn {
+    flex: 1;
+    padding: 10px;
+    border: none;
+    border-radius: 10px;
+    background: transparent;
+    color: var(--text-secondary);
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.tab-btn.active {
+    background: var(--surface);
+    color: var(--text-primary);
+    box-shadow: var(--shadow-sm);
+}
+
+.wordlist-loading {
+    display: flex;
+    justify-content: center;
+    padding: 40px 0;
+}
+
+/* List view */
+.list-card {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    padding: 16px;
+    background: var(--surface);
+    border-radius: 14px;
+    margin-bottom: 8px;
+    cursor: pointer;
+    box-shadow: var(--shadow-sm);
+    transition: transform 0.15s;
+}
+
+.list-card:hover {
+    transform: translateX(4px);
+}
+
+.list-card-icon {
+    font-size: 28px;
+}
+
+.list-card-info {
+    flex: 1;
+}
+
+.list-card-name {
+    font-weight: 600;
+    color: var(--text-primary);
+    font-size: 16px;
+}
+
+.list-card-desc {
+    font-size: 13px;
+    color: var(--text-secondary);
+    margin-top: 2px;
+}
+
+.list-card-arrow {
+    color: var(--text-tertiary);
+    font-size: 18px;
+}
+
+.btn-create-list {
+    width: 100%;
+    padding: 16px;
+    border: 2px dashed var(--border);
+    border-radius: 14px;
+    background: transparent;
+    color: var(--text-secondary);
+    font-size: 15px;
+    font-weight: 600;
+    cursor: pointer;
+    margin-bottom: 12px;
+    transition: all 0.2s;
+}
+
+.btn-create-list:hover {
+    border-color: var(--primary);
+    color: var(--primary);
+    background: var(--primary-alpha);
+}
+
+.empty-state {
+    text-align: center;
+    padding: 40px 20px;
+    color: var(--text-tertiary);
+}
+
+.empty-hint {
+    font-size: 13px;
+    margin-top: 4px;
+}
+
+/* Word list view */
+.btn-back {
+    background: none;
+    border: none;
+    color: var(--primary);
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+    padding: 8px 0;
+    margin-bottom: 8px;
+}
+
+.unit-section {
+    margin-bottom: 20px;
+}
+
+.unit-title {
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--text-secondary);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    padding-bottom: 8px;
+    border-bottom: 1px solid var(--border);
+    margin-bottom: 8px;
+}
+
+.word-list {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.word-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 12px 16px;
+    background: var(--surface);
+    border-radius: 10px;
+}
+
+.word-item-en {
+    font-weight: 600;
+    color: var(--text-primary);
+    font-size: 15px;
+}
+
+.word-item-cn {
+    color: var(--text-secondary);
+    font-size: 13px;
+    max-width: 50%;
+    text-align: right;
+}
+
+/* Modal */
+.modal-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.5);
+    display: flex;
+    align-items: flex-end;
+    justify-content: center;
+    z-index: 200;
+    animation: fadeIn 0.2s;
+}
+
+.modal {
+    background: var(--surface);
+    border-radius: 24px 24px 0 0;
+    width: 100%;
+    max-width: 480px;
+    max-height: 85vh;
+    overflow-y: auto;
+    animation: slideUp 0.3s ease-out;
+}
+
+.modal-sm {
+    max-height: 50vh;
+}
+
+@keyframes slideUp {
+    from {
+        transform: translateY(100%);
+    }
+
+    to {
+        transform: translateY(0);
+    }
+}
+
+.modal-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 20px 24px 0;
+}
+
+.modal-header h2 {
+    font-size: 20px;
+    font-weight: 700;
+    color: var(--text-primary);
+    margin: 0;
+}
+
+.btn-close {
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    border: none;
+    background: var(--surface-dim);
+    color: var(--text-secondary);
+    font-size: 16px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.modal-body {
+    padding: 20px 24px 32px;
+}
+
+.gen-input-row {
+    display: flex;
+    gap: 8px;
+    margin-bottom: 16px;
+}
+
+.gen-input {
+    flex: 1;
+    padding: 12px 16px;
+    border: 2px solid var(--border);
+    border-radius: 12px;
+    font-size: 16px;
+    background: var(--surface-dim);
+    color: var(--text-primary);
+    outline: none;
+}
+
+.gen-input:focus {
+    border-color: var(--primary);
+}
+
+.btn-generate {
+    padding: 12px 16px;
+    background: var(--accent-gradient);
+    color: white;
+    border: none;
+    border-radius: 12px;
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+    white-space: nowrap;
+}
+
+.btn-generate:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+.gen-form {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    animation: fadeIn 0.3s;
+}
+
+.gen-field {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.gen-field label {
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--text-secondary);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.gen-field input {
+    padding: 10px 14px;
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    font-size: 14px;
+    background: var(--surface-dim);
+    color: var(--text-primary);
+    outline: none;
+}
+
+.gen-field input:focus {
+    border-color: var(--primary);
+}
+
+/* CSV */
+.csv-hint {
+    font-size: 13px;
+    color: var(--text-secondary);
+    margin-bottom: 12px;
+}
+
+.csv-file-input {
+    margin: 12px 0;
+    font-size: 14px;
+    color: var(--text-secondary);
+}
+
+.csv-preview-count {
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--success);
+    margin: 8px 0;
+}
+
+.csv-preview {
+    background: var(--surface-dim);
+    border-radius: 10px;
+    padding: 8px;
+    margin-bottom: 16px;
+    max-height: 200px;
+    overflow-y: auto;
+}
+
+.csv-preview-row {
+    display: flex;
+    justify-content: space-between;
+    padding: 6px 8px;
+    font-size: 13px;
+    border-bottom: 1px solid var(--border);
+}
+
+.csv-more {
+    text-align: center;
+    color: var(--text-tertiary);
+    font-size: 12px;
+    margin: 4px 0 0;
+}
