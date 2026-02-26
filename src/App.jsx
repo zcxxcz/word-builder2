@@ -1,5 +1,5 @@
 import { useEffect } from 'react';
-import { BrowserRouter, Routes, Route } from 'react-router-dom';
+import { HashRouter, Routes, Route } from 'react-router-dom';
 import { useAuthStore } from './stores/authStore';
 import ProtectedRoute from './components/Layout/ProtectedRoute';
 import TabBar from './components/Layout/TabBar';
@@ -18,7 +18,7 @@ export default function App() {
   }, []);
 
   return (
-    <BrowserRouter>
+    <HashRouter>
       <div className="app">
         <Routes>
           <Route path="/login" element={<LoginPage />} />
@@ -40,6 +40,6 @@ export default function App() {
         </Routes>
         <TabBar />
       </div>
-    </BrowserRouter>
+    </HashRouter>
   );
 }
