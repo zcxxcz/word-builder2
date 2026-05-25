@@ -1,9 +1,25 @@
 import { create } from 'zustand';
+import { persist } from 'zustand/middleware';
 import { supabase } from '../lib/supabase';
 import { PHASE, STEP } from '../utils/constants';
 import { calculateLevelUpdate, getNextReviewDate, getToday, shuffle } from '../utils/srs';
 
-export const useStudyStore = create((set, get) => ({
+const emptySessionResults = {
+    startTime: null,
+    newCount: 0,
+    reviewCount: 0,
+    spellingCorrect: 0,
+    spellingTotal: 0,
+    recallKnow: 0,
+    recallDontKnow: 0,
+    usagePassed: 0,
+    usageTotal: 0,
+    usageSkipped: 0,
+    levelUps: 0,
+    wordErrors: {},
+};
+
+export const useStudyStore = create(persist((set, get) => ({
     // Queue state
     phase: null,           // current phase: review, new_learn, new_review, relapse, complete
     step: null,            // current step: recall or spelling
@@ -18,6 +34,7 @@ export const useStudyStore = create((set, get) => ({
     // Current phase sub-queues (for A-then-B pattern)
     stepAQueue: [],
     stepBQueue: [],
+    stepCQueue: [],
 
     // Results tracking
     sessionResults: {
@@ -28,15 +45,19 @@ export const useStudyStore = create((set, get) => ({
         spellingTotal: 0,
         recallKnow: 0,
         recallDontKnow: 0,
+        usagePassed: 0,
+        usageTotal: 0,
+        usageSkipped: 0,
         levelUps: 0,
         wordErrors: {},     // { word: errorCount }
     },
 
     // Per-word tracking for current phase
-    wordPhaseResults: {},  // { word: { recallPassed, spellingPassed } }
+    wordPhaseResults: {},  // { word: { recallPassed, spellingPassed, usagePassed } }
 
     // Session state  
     isActive: false,
+    sessionUserId: null,
     showAnswer: false,
     spellingResult: null,  // null, 'correct', 'incorrect'
     correctSpelling: '',
@@ -46,12 +67,13 @@ export const useStudyStore = create((set, get) => ({
     /**
      * Initialize a study session with pre-generated queues
      */
-    startSession: (reviewWords, newWords) => {
+    startSession: (reviewWords, newWords, userId) => {
         set({
             reviewWords,
             newWords,
             relapseWords: [],
             isActive: true,
+            sessionUserId: userId,
             sessionResults: {
                 startTime: Date.now(),
                 newCount: newWords.length,
@@ -60,6 +82,9 @@ export const useStudyStore = create((set, get) => ({
                 spellingTotal: 0,
                 recallKnow: 0,
                 recallDontKnow: 0,
+                usagePassed: 0,
+                usageTotal: 0,
+                usageSkipped: 0,
                 levelUps: 0,
                 wordErrors: {},
             },
@@ -72,7 +97,7 @@ export const useStudyStore = create((set, get) => ({
         } else if (newWords.length > 0) {
             get().startPhase(PHASE.NEW_LEARN, newWords);
         } else {
-            set({ phase: PHASE.COMPLETE, isActive: false });
+            set({ phase: PHASE.COMPLETE, isActive: false, sessionUserId: null });
         }
     },
 
@@ -98,6 +123,9 @@ export const useStudyStore = create((set, get) => ({
                 queue: queue.slice(1),
                 currentWord: queue[0],
                 step: queue[0]._step,
+                stepAQueue: [],
+                stepBQueue: [],
+                stepCQueue: [],
                 wordPhaseResults: {},
                 showAnswer: false,
                 spellingResult: null,
@@ -105,17 +133,19 @@ export const useStudyStore = create((set, get) => ({
                 correctionDone: false,
             });
         } else {
-            // Review/new_review/relapse: all Step A first, then all Step B
+            // Review/new_review/relapse: all Step A, then B, then usage application.
             const shuffled = shuffle(words);
             const stepAQueue = shuffled.map(w => ({ ...w, _step: STEP.RECALL }));
             const stepBQueue = shuffle(words).map(w => ({ ...w, _step: STEP.SPELLING }));
+            const stepCQueue = shuffle(words).map(w => ({ ...w, _step: STEP.USAGE }));
 
-            const fullQueue = [...stepAQueue, ...stepBQueue];
+            const fullQueue = [...stepAQueue, ...stepBQueue, ...stepCQueue];
             set({
                 phase,
                 queue: fullQueue.slice(1),
                 stepAQueue: stepAQueue.slice(1),
                 stepBQueue,
+                stepCQueue,
                 currentWord: fullQueue[0],
                 step: fullQueue[0]._step,
                 wordPhaseResults: {},
@@ -232,6 +262,61 @@ export const useStudyStore = create((set, get) => ({
     },
 
     /**
+     * Submit AI-graded usage application result.
+     */
+    submitUsage: (passed) => {
+        const { currentWord, sessionResults, wordPhaseResults } = get();
+        const wordKey = currentWord.word.toLowerCase();
+        const newResults = { ...sessionResults };
+
+        newResults.usageTotal++;
+        if (passed) {
+            newResults.usagePassed++;
+        } else {
+            get().addToRelapse(currentWord);
+            if (!newResults.wordErrors[wordKey]) {
+                newResults.wordErrors[wordKey] = 0;
+            }
+            newResults.wordErrors[wordKey]++;
+        }
+
+        const newWordResults = { ...wordPhaseResults };
+        if (!newWordResults[wordKey]) newWordResults[wordKey] = {};
+        newWordResults[wordKey].usagePassed = passed;
+
+        set({
+            sessionResults: newResults,
+            wordPhaseResults: newWordResults,
+        });
+
+        console.log('usage_submit', { correct: passed });
+        get().advanceWord();
+    },
+
+    /**
+     * Skip usage application when AI generation/grading is unavailable.
+     */
+    skipUsage: () => {
+        const { currentWord, sessionResults, wordPhaseResults } = get();
+        const wordKey = currentWord.word.toLowerCase();
+
+        const newWordResults = { ...wordPhaseResults };
+        if (!newWordResults[wordKey]) newWordResults[wordKey] = {};
+        newWordResults[wordKey].usageSkipped = true;
+
+        set({
+            sessionResults: {
+                ...sessionResults,
+                usageSkipped: sessionResults.usageSkipped + 1,
+            },
+            wordPhaseResults: newWordResults,
+        });
+
+        console.log('usage_skip');
+        get().advanceWord();
+    },
+
+    /**
      * Add word to relapse queue
      */
     addToRelapse: (word) => {
@@ -271,17 +356,20 @@ export const useStudyStore = create((set, get) => ({
      */
     finishCurrentPhase: async () => {
         const { phase, wordPhaseResults, sessionResults } = get();
-        const state = get();
 
-        // Update levels for words that were reviewed (both A and B completed)
+        // Update levels for words that were reviewed (A, B, and usage completed).
         if (phase !== PHASE.NEW_LEARN) {
             const userId = (await supabase.auth.getUser()).data.user?.id;
             if (userId) {
                 let levelUps = sessionResults.levelUps;
 
                 for (const [wordKey, results] of Object.entries(wordPhaseResults)) {
-                    if (results.recallPassed !== undefined && results.spellingPassed !== undefined) {
-                        // Both steps completed, update level
+                    if (
+                        results.recallPassed !== undefined &&
+                        results.spellingPassed !== undefined &&
+                        results.usagePassed !== undefined
+                    ) {
+                        // All three steps completed, update level.
                         const { data: existing } = await supabase
                             .from('user_word_state')
                             .select('*')
@@ -293,7 +381,8 @@ export const useStudyStore = create((set, get) => ({
                         const updates = calculateLevelUpdate(
                             currentState,
                             results.recallPassed,
-                            results.spellingPassed
+                            results.spellingPassed,
+                            results.usagePassed
                         );
 
                         if (updates.level > currentState.level) {
@@ -418,6 +507,11 @@ export const useStudyStore = create((set, get) => ({
             self_eval_stats: {
                 know: sessionResults.recallKnow,
                 dont_know: sessionResults.recallDontKnow,
+                usage: {
+                    passed: sessionResults.usagePassed,
+                    total: sessionResults.usageTotal,
+                    skipped: sessionResults.usageSkipped,
+                },
             },
             duration_seconds: duration,
             hardest_word: hardestWord,
@@ -431,6 +525,7 @@ export const useStudyStore = create((set, get) => ({
         set({
             phase: PHASE.COMPLETE,
             isActive: false,
+            sessionUserId: null,
         });
 
         console.log('session_complete', sessionRecord);
@@ -457,6 +552,7 @@ export const useStudyStore = create((set, get) => ({
             relapseWords: [],
             stepAQueue: [],
             stepBQueue: [],
+            stepCQueue: [],
             sessionResults: {
                 startTime: null,
                 newCount: 0,
@@ -465,11 +561,15 @@ export const useStudyStore = create((set, get) => ({
                 spellingTotal: 0,
                 recallKnow: 0,
                 recallDontKnow: 0,
+                usagePassed: 0,
+                usageTotal: 0,
+                usageSkipped: 0,
                 levelUps: 0,
                 wordErrors: {},
             },
             wordPhaseResults: {},
             isActive: false,
+            sessionUserId: null,
             showAnswer: false,
             spellingResult: null,
             correctSpelling: '',
@@ -482,9 +582,11 @@ export const useStudyStore = create((set, get) => ({
      * Get total remaining items (for progress display)
      */
     getTotalItems: () => {
-        const { reviewWords, newWords } = get();
-        // Review: all words × 2 steps, New: each word × 2 steps (learn) + all × 2 steps (review)
-        return (reviewWords.length * 2) + (newWords.length * 2) + (newWords.length * 2);
+        const { reviewWords, newWords, relapseWords } = get();
+        const settings = get().sessionSettings || {};
+        const relapseCount = Math.min(relapseWords.length, settings.relapse_cap || 10);
+        // Review/relapse: 3 steps. New: 2 learning steps + 3 review steps.
+        return (reviewWords.length * 3) + (newWords.length * 5) + (relapseCount * 3);
     },
 
     /**
@@ -493,7 +595,52 @@ export const useStudyStore = create((set, get) => ({
     getCompletedItems: () => {
         const state = get();
         const total = state.getTotalItems();
-        const remaining = state.queue.length + 1; // +1 for current
-        return Math.max(0, total - remaining);
+        const currentRemaining = state.currentWord ? state.queue.length + 1 : 0;
+        const settings = state.sessionSettings || {};
+        const relapseCount = Math.min(state.relapseWords.length, settings.relapse_cap || 10);
+
+        let futureRemaining = 0;
+        if (state.phase === PHASE.REVIEW) {
+            futureRemaining = (state.newWords.length * 5) + (relapseCount * 3);
+        } else if (state.phase === PHASE.NEW_LEARN) {
+            futureRemaining = (state.newWords.length * 3) + (relapseCount * 3);
+        } else if (state.phase === PHASE.NEW_REVIEW) {
+            futureRemaining = relapseCount * 3;
+        }
+
+        return Math.max(0, total - currentRemaining - futureRemaining);
     },
+}), {
+    name: 'word-builder-active-study-session',
+    partialize: (state) => ({
+        phase: state.phase,
+        step: state.step,
+        currentWord: state.currentWord,
+        queue: state.queue,
+        reviewWords: state.reviewWords,
+        newWords: state.newWords,
+        relapseWords: state.relapseWords,
+        stepAQueue: state.stepAQueue,
+        stepBQueue: state.stepBQueue,
+        stepCQueue: state.stepCQueue,
+        sessionResults: state.sessionResults,
+        wordPhaseResults: state.wordPhaseResults,
+        isActive: state.isActive,
+        sessionUserId: state.sessionUserId,
+        showAnswer: state.showAnswer,
+        spellingResult: state.spellingResult,
+        correctSpelling: state.correctSpelling,
+        needsCorrection: state.needsCorrection,
+        correctionDone: state.correctionDone,
+        sessionSettings: state.sessionSettings,
+    }),
+    merge: (persistedState, currentState) => ({
+        ...currentState,
+        ...persistedState,
+        sessionResults: {
+            ...emptySessionResults,
+            ...(persistedState?.sessionResults || {}),
+        },
+        wordPhaseResults: persistedState?.wordPhaseResults || {},
+    }),
 }));

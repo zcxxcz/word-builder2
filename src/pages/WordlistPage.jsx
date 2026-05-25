@@ -30,8 +30,6 @@ export default function WordlistPage() {
     const [showCreateList, setShowCreateList] = useState(false);
     const [newListName, setNewListName] = useState('');
 
-    useEffect(() => { loadWordlists(); }, []);
-
     const loadWordlists = async () => {
         setLoading(true);
         try {
@@ -52,6 +50,13 @@ export default function WordlistPage() {
         }
         setLoading(false);
     };
+
+    useEffect(() => {
+        const timer = setTimeout(() => {
+            loadWordlists();
+        }, 0);
+        return () => clearTimeout(timer);
+    }, []);
 
     const loadWords = async (listId, isBuiltIn) => {
         setSelectedList(listId);

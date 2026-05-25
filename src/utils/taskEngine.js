@@ -1,4 +1,5 @@
 import { supabase } from '../lib/supabase';
+import { REVIEW_BATCH_LIMIT } from './constants';
 import { getToday, shuffle } from './srs';
 
 /**
@@ -12,7 +13,8 @@ import { getToday, shuffle } from './srs';
  */
 export async function generateDailyQueue(settings, userId) {
     const today = getToday();
-    const { daily_new = 10, review_cap = 40 } = settings;
+    const { daily_new = 10, review_cap = REVIEW_BATCH_LIMIT } = settings;
+    const effectiveReviewCap = Math.min(review_cap, REVIEW_BATCH_LIMIT);
 
     // 1. Due reviews: words with next_review_at <= today
     const { data: reviewStates, error: reviewErr } = await supabase
@@ -21,7 +23,7 @@ export async function generateDailyQueue(settings, userId) {
         .eq('user_id', userId)
         .lte('next_review_at', today)
         .order('next_review_at', { ascending: true })
-        .limit(review_cap);
+        .limit(effectiveReviewCap);
 
     if (reviewErr) throw reviewErr;
 
@@ -137,7 +139,8 @@ async function enrichWordsFromState(states) {
  */
 export async function getTaskCounts(settings, userId) {
     const today = getToday();
-    const { daily_new = 10, review_cap = 40 } = settings;
+    const { daily_new = 10, review_cap = REVIEW_BATCH_LIMIT } = settings;
+    const effectiveReviewCap = Math.min(review_cap, REVIEW_BATCH_LIMIT);
 
     // Count due reviews
     const { count: reviewCount, error: reviewErr } = await supabase
@@ -174,7 +177,7 @@ export async function getTaskCounts(settings, userId) {
     const availableNew = Math.max(0, totalWords - (studiedCount || 0));
 
     return {
-        reviewCount: Math.min(reviewCount || 0, review_cap),
+        reviewCount: Math.min(reviewCount || 0, effectiveReviewCap),
         newCount: Math.min(availableNew, daily_new),
         totalStudied: studiedCount || 0,
         totalWords,

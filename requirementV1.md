@@ -18,7 +18,7 @@
 - 练习形式枯燥导致坚持难
 
 ### 2.2 产品目标
-- 通过"回想（检索）+ 拼写（输出）"的高效练习机制，让孩子在可持续节奏下掌握并保持词汇。
+- 通过"回想（检索）+ 拼写（输出）+ 场景应用（迁移使用）"的高效练习机制，让孩子在可持续节奏下掌握并保持词汇。
 - 提供外研版新课标初一内置词表，同时支持家长/孩子自定义扩展。
 
 ### 2.3 成功标准（MVP）
@@ -52,6 +52,7 @@
 3. **练习形式（无选择题）**：
    - 意思训练：回想 → 显示答案 → 自评
    - 拼写训练：直接打字 → 判对错 → 错则强制纠正
+   - 场景应用：系统给中文场景句 → 学生用目标词写英文整句 → AI 批改
 4. **生词"智能生成"（只输英文）**：
    - 采用 DeepSeek API 生成中文释义、音标、例句
    - 发音兜底：Web Speech API TTS
@@ -72,8 +73,8 @@
 ### 5.1 技术选型
 | 层面 | 技术 |
 |------|------|
-| 前端框架 | Vite + React 18 |
-| 路由 | React Router v6 |
+| 前端框架 | Vite 7 + React 19 |
+| 路由 | React Router 7（HashRouter） |
 | 状态管理 | Zustand |
 | 样式 | Vanilla CSS + CSS Variables（支持暗色模式） |
 | 后端 / 数据库 | Supabase（Auth + PostgreSQL） |
@@ -86,9 +87,9 @@
 - **离线不支持**：需联网使用，断网时操作将失败（显示错误提示）
 
 ### 5.3 DeepSeek API 保护
-- **开发/个人使用**：API Key 存储在前端环境变量（`.env`）中直接调用
-- **公开部署时**：切换为 Supabase Edge Function 代理（代码已准备在 `supabase/functions/deepseek-proxy/`）
-- **限流**：每用户每日 AI 生成上限 30 次，通过 localStorage 计数
+- **前端调用方式**：前端只调用 Supabase Edge Function `deepseek-proxy`，不直接请求 DeepSeek API
+- **密钥存放**：`DEEPSEEK_API_KEY` 只配置在 Supabase Edge Function 的服务端环境中
+- **限流**：生词内容生成每日 30 次；场景题生成和场景题批改各每日 200 次；前端用 localStorage 做快速反馈，Edge Function 以 `user_settings` 做服务端限制
 
 ---
 
@@ -129,11 +130,11 @@
 ### 8.3 每日任务生成
 参数：
 - daily_new（默认 10）
-- review_cap（默认 40）
+- review_cap（默认 10，单次到期复习最多 10 个词）
 - relapse_cap（默认 10）
 
 队列构成（固定顺序）：
-1. **到期复习**：next_review ≤ today，最多 review_cap
+1. **到期复习**：next_review ≤ today，最多 min(review_cap, 10)
 2. **新学**：从未学过的词中取 daily_new
 3. **新词自动复习**：新学完成后，对所有新学的词自动发起一轮复习，体验与到期复习一致
 4. **当天回流**：当日拼写错误 / 意思自评"不认识"的词，最多 relapse_cap
@@ -147,6 +148,7 @@
 对所有复习的单词以**随机顺序**：
 1. 先全部走一遍 Step A（回想）
 2. 再全部走一遍 Step B（拼写）
+3. 最后全部走一遍 Step C（场景应用）
 
 > **新词自动复习**：新学完成后自动开启的复习，体验与"到期复习"完全一致。
 
@@ -162,12 +164,19 @@
 - 输入英文 → 提交判定
 - 错误：显示正确拼写，并要求至少再输入一次正确拼写（强化纠正）
 
-以上所有步骤支持在电脑上按 **Enter** 进入下一步。
+#### Step C：场景应用（无选项）
+- 展示目标词/短语、中文释义和系统生成的中文场景句
+- 学生输入完整英文句子，必须自然用到目标词/短语，允许根据语境变形
+- DeepSeek AI 按语义、语法可理解度、目标词用法综合批改，并展示中文反馈和参考答案
+- AI 生成或批改失败时允许暂时跳过；跳过不算错，也不更新该词等级
+
+Step A/B 支持在电脑上按 **Enter** 进入下一步；Step C 支持 **Ctrl + Enter** 提交。
 
 ### 8.5 等级更新规则（结合自评 + 拼写）
 
-- **升级条件**：复习中意思回想和拼写打字**两项均通过**时，等级 +1（含新学完成后的自动复习）
+- **升级条件**：复习中意思回想、拼写打字、场景应用**三项均通过**时，等级 +1（含新学完成后的自动复习）
 - **降级条件**：任一项未通过，等级 -1（最低 L0），该词加入当天回流队列
+- **系统失败不更新**：场景题因 AI 生成/批改失败而跳过时，不升级、不降级、不加入回流
 - **仅学习不升级**：首次新学过程中的 Step A/B 不影响等级
 
 ### 8.6 同词判定规则
@@ -250,6 +259,10 @@
     - 中文释义 + 发音按钮
     - 输入框 + 提交（Enter 或按钮）
     - 对错反馈 + 错误纠正（至少输入一次正确）
+  - Step C 场景应用卡：
+    - 目标词/短语 + 中文场景句
+    - 输入完整英文句子 + AI 批改
+    - 展示反馈、参考答案，未通过进入当天回流
 - 错词回流：
   - 当天错的词加入回流队列，学习末尾出现（最多 relapse_cap）
 - 完成战报：
@@ -270,7 +283,7 @@
 - 显示当前登录用户邮箱
 - 学习设置：
   - 每日新学量 daily_new（滑块，3–30）
-  - 复习上限 review_cap（滑块，10–100）
+  - 单次复习上限 review_cap（滑块，1–10）
   - 回流上限 relapse_cap（滑块，3–20）
 - 发音设置：
   - TTS 开关
@@ -294,11 +307,12 @@
 | `custom_wordlists` | 自定义词表（用户级） | id, user_id, name, description |
 | `custom_words` | 自定义词汇（用户级） | id, user_id, wordlist_id, word, meaning_cn, phonetic, example |
 | `user_word_state` | 学习进度（user_id + word 唯一） | level, next_review_at, last_seen_at, wrong_count, correct_streak |
+| `user_usage_exercises` | 场景应用题缓存（用户级） | user_id, word, meaning_cn, prompt_cn, reference_answer_en |
 | `sessions` | 学习记录 | date, new_count, review_count, spelling_accuracy, level_ups, duration_seconds, hardest_word |
-| `user_settings` | 用户设置 | daily_new, review_cap, relapse_cap, tts_enabled, tts_rate, daily_gen_count, last_gen_date |
+| `user_settings` | 用户设置 | daily_new, review_cap, relapse_cap, tts_enabled, tts_rate, AI 计数字段 |
 
 ### 10.2 导入导出
-- 导出 JSON：包含 user_word_state、sessions、custom_wordlists、custom_words、user_settings
+- 导出 JSON：包含 user_word_state、sessions、custom_wordlists、custom_words、user_usage_exercises、user_settings
 - 导入 JSON：按表 upsert（word_state 按 user_id+word 合并，词表新建导入）
 
 ---
@@ -336,6 +350,7 @@
 - 卡片切换有淡入动画
 - 拼写正确/错误有色彩反馈
 - 学习完成有庆祝动画（🎉 弹入）
+- 学习中断可恢复：浏览器刷新、手机切换应用后，未完成的学习会话从本地恢复；主动退出或完成学习后清除恢复点。
 
 ---
 
@@ -355,10 +370,11 @@
 4. 拼写错误必须提示正确答案并至少纠正一次，且进入当天回流
 5. SRS 生效：next_review 随表现正确变化
 6. 新学完成后自动发起一轮复习，体验与到期复习一致
-7. 今日战报与进度页数据正确
-8. 多设备同步：同一账号在不同浏览器登录后数据一致
-9. 支持数据导出/导入（JSON）
-10. 移动端体验良好，支持内网手机访问
+7. 复习型阶段包含场景应用题，三项均通过才升级；场景题未通过进入当天回流
+8. 今日战报与进度页数据正确
+9. 多设备同步：同一账号在不同浏览器登录后数据一致
+10. 支持数据导出/导入（JSON）
+11. 移动端体验良好，支持内网手机访问
 
 ---
 
@@ -386,5 +402,5 @@ word-builder2/
 │   ├── migration.sql
 │   ├── import_grade7a.sql, import_grade7b.sql
 │   └── functions/deepseek-proxy/  (公开部署用)
-└── .env
+└── .env           (仅保存 VITE_SUPABASE_URL / VITE_SUPABASE_ANON_KEY 等本地变量名对应值)
 ```

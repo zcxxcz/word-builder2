@@ -1,7 +1,8 @@
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { useAuthStore } from '../stores/authStore';
 import { useSettingsStore } from '../stores/settingsStore';
 import { supabase } from '../lib/supabase';
+import { REVIEW_BATCH_LIMIT } from '../utils/constants';
 import './SettingsPage.css';
 
 export default function SettingsPage() {
@@ -10,6 +11,7 @@ export default function SettingsPage() {
     const [showClearConfirm, setShowClearConfirm] = useState(false);
     const [clearStep, setClearStep] = useState(0);
     const [importMessage, setImportMessage] = useState('');
+    const effectiveReviewCap = Math.min(settings.review_cap, REVIEW_BATCH_LIMIT);
 
     const handleSettingChange = (key, value) => {
         updateSettings(user.id, { [key]: value });
@@ -37,6 +39,11 @@ export default function SettingsPage() {
             .select('*')
             .eq('user_id', user.id);
 
+        const { data: usageExercises } = await supabase
+            .from('user_usage_exercises')
+            .select('*')
+            .eq('user_id', user.id);
+
         const { data: userSettings } = await supabase
             .from('user_settings')
             .select('*')
@@ -44,12 +51,13 @@ export default function SettingsPage() {
             .single();
 
         const exportData = {
-            version: 1,
+            version: 2,
             exported_at: new Date().toISOString(),
             user_word_state: states || [],
             sessions: sessions || [],
             custom_wordlists: customLists || [],
             custom_words: customWords || [],
+            user_usage_exercises: usageExercises || [],
             user_settings: userSettings || {},
         };
 
@@ -109,6 +117,19 @@ export default function SettingsPage() {
                     }
                 }
 
+                // Import cached usage exercises
+                if (data.user_usage_exercises?.length > 0) {
+                    for (const exercise of data.user_usage_exercises) {
+                        await supabase.from('user_usage_exercises').upsert({
+                            user_id: user.id,
+                            word: exercise.word,
+                            meaning_cn: exercise.meaning_cn || '',
+                            prompt_cn: exercise.prompt_cn,
+                            reference_answer_en: exercise.reference_answer_en,
+                        }, { onConflict: 'user_id,word,meaning_cn' });
+                    }
+                }
+
                 // Import settings
                 if (data.user_settings) {
                     await updateSettings(user.id, {
@@ -137,6 +158,7 @@ export default function SettingsPage() {
 
         await supabase.from('user_word_state').delete().eq('user_id', user.id);
         await supabase.from('sessions').delete().eq('user_id', user.id);
+        await supabase.from('user_usage_exercises').delete().eq('user_id', user.id);
         await supabase.from('custom_words').delete().eq('user_id', user.id);
         await supabase.from('custom_wordlists').delete().eq('user_id', user.id);
 
@@ -179,14 +201,14 @@ export default function SettingsPage() {
                 </div>
                 <div className="setting-item">
                     <div className="setting-label">
-                        <span>复习上限</span>
-                        <span className="setting-value">{settings.review_cap} 词</span>
+                        <span>单次复习上限</span>
+                        <span className="setting-value">{effectiveReviewCap} 词</span>
                     </div>
                     <input
                         type="range"
-                        min="10"
-                        max="100"
-                        value={settings.review_cap}
+                        min="1"
+                        max={REVIEW_BATCH_LIMIT}
+                        value={effectiveReviewCap}
                         onChange={e => handleSettingChange('review_cap', parseInt(e.target.value))}
                         className="setting-slider"
                     />

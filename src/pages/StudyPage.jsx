@@ -7,6 +7,7 @@ import { generateDailyQueue } from '../utils/taskEngine';
 import { PHASE, STEP } from '../utils/constants';
 import RecallCard from '../components/Study/RecallCard';
 import SpellingCard from '../components/Study/SpellingCard';
+import UsageCard from '../components/Study/UsageCard';
 import { speak } from '../lib/tts';
 import './StudyPage.css';
 
@@ -30,6 +31,18 @@ export default function StudyPage() {
     const initSession = async () => {
         try {
             setLoading(true);
+            setError('');
+
+            if (study.isActive && study.currentWord) {
+                if (!study.sessionUserId || study.sessionUserId === user.id) {
+                    study.setSessionSettings(study.sessionSettings || settings);
+                    setLoading(false);
+                    return;
+                }
+
+                study.resetSession();
+            }
+
             study.setSessionSettings(settings);
             const { reviewWords, newWords } = await generateDailyQueue(settings, user.id);
 
@@ -39,7 +52,7 @@ export default function StudyPage() {
                 return;
             }
 
-            study.startSession(reviewWords, newWords);
+            study.startSession(reviewWords, newWords, user.id);
             console.log('start_session', { type: 'all' });
         } catch (err) {
             console.error('Failed to init session:', err);
@@ -148,6 +161,18 @@ export default function StudyPage() {
                             <span>✅ 回想通过</span>
                             <strong>{results.recallKnow} / {results.recallKnow + results.recallDontKnow}</strong>
                         </div>
+                        {results.usageTotal > 0 && (
+                            <div className="detail-row">
+                                <span>场景应用通过</span>
+                                <strong>{results.usagePassed} / {results.usageTotal}</strong>
+                            </div>
+                        )}
+                        {results.usageSkipped > 0 && (
+                            <div className="detail-row">
+                                <span>场景题跳过</span>
+                                <strong>{results.usageSkipped}</strong>
+                            </div>
+                        )}
                         {hardestWord && (
                             <div className="detail-row">
                                 <span>💪 最难词</span>
@@ -206,6 +231,15 @@ export default function StudyPage() {
                         correctionDone={study.correctionDone}
                         onSubmit={(input) => study.submitSpelling(input)}
                         onProceed={() => study.proceedAfterSpelling()}
+                    />
+                )}
+
+                {study.currentWord && study.step === STEP.USAGE && (
+                    <UsageCard
+                        key={`usage-${study.currentWord.word}-${study.phase}-${completedItems}`}
+                        word={study.currentWord}
+                        onSubmit={(passed) => study.submitUsage(passed)}
+                        onSkip={() => study.skipUsage()}
                     />
                 )}
             </div>

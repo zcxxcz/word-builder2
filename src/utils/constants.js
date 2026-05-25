@@ -7,11 +7,12 @@ export const SRS_INTERVALS = {
 };
 
 export const MAX_LEVEL = 3;
+export const REVIEW_BATCH_LIMIT = 10;
 
 // Default daily task parameters
 export const DEFAULT_SETTINGS = {
     daily_new: 10,
-    review_cap: 40,
+    review_cap: REVIEW_BATCH_LIMIT,
     relapse_cap: 10,
     tts_enabled: true,
     tts_rate: 1.0,
@@ -19,6 +20,7 @@ export const DEFAULT_SETTINGS = {
 
 // DeepSeek AI daily generation limit per user
 export const AI_DAILY_LIMIT = 30;
+export const USAGE_AI_DAILY_LIMIT = 200;
 
 // Study session phases
 export const PHASE = {
@@ -33,4 +35,5 @@ export const PHASE = {
 export const STEP = {
     RECALL: 'recall',       // Step A: 意思回想
     SPELLING: 'spelling',   // Step B: 拼写打字
+    USAGE: 'usage',         // Step C: 场景应用
 };

@@ -80,15 +80,39 @@ CREATE TABLE IF NOT EXISTS user_settings (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   user_id UUID REFERENCES auth.users(id) ON DELETE CASCADE NOT NULL UNIQUE,
   daily_new INTEGER DEFAULT 10,
-  review_cap INTEGER DEFAULT 40,
+  review_cap INTEGER DEFAULT 10,
   relapse_cap INTEGER DEFAULT 10,
   tts_enabled BOOLEAN DEFAULT true,
   tts_rate FLOAT DEFAULT 1.0,
   daily_gen_count INTEGER DEFAULT 0,
   last_gen_date DATE,
+  daily_usage_gen_count INTEGER DEFAULT 0,
+  last_usage_gen_date DATE,
+  daily_usage_grade_count INTEGER DEFAULT 0,
+  last_usage_grade_date DATE,
   created_at TIMESTAMPTZ DEFAULT now(),
   updated_at TIMESTAMPTZ DEFAULT now()
 );
+
+-- 8. Usage Exercises (per-user AI-generated scenario prompts)
+CREATE TABLE IF NOT EXISTS user_usage_exercises (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id UUID REFERENCES auth.users(id) ON DELETE CASCADE NOT NULL,
+  word TEXT NOT NULL,
+  meaning_cn TEXT NOT NULL DEFAULT '',
+  prompt_cn TEXT NOT NULL,
+  reference_answer_en TEXT NOT NULL,
+  created_at TIMESTAMPTZ DEFAULT now(),
+  updated_at TIMESTAMPTZ DEFAULT now(),
+  UNIQUE(user_id, word, meaning_cn)
+);
+
+-- Existing projects can re-run this migration safely.
+ALTER TABLE user_settings ADD COLUMN IF NOT EXISTS daily_usage_gen_count INTEGER DEFAULT 0;
+ALTER TABLE user_settings ADD COLUMN IF NOT EXISTS last_usage_gen_date DATE;
+ALTER TABLE user_settings ADD COLUMN IF NOT EXISTS daily_usage_grade_count INTEGER DEFAULT 0;
+ALTER TABLE user_settings ADD COLUMN IF NOT EXISTS last_usage_grade_date DATE;
+ALTER TABLE user_settings ALTER COLUMN review_cap SET DEFAULT 10;
 
 -- ============================================
 -- Row Level Security (RLS) Policies
@@ -98,11 +122,13 @@ CREATE TABLE IF NOT EXISTS user_settings (
 ALTER TABLE built_in_wordlists ENABLE ROW LEVEL SECURITY;
 ALTER TABLE built_in_words ENABLE ROW LEVEL SECURITY;
 
+DROP POLICY IF EXISTS "Anyone can read built_in_wordlists" ON built_in_wordlists;
 CREATE POLICY "Anyone can read built_in_wordlists"
   ON built_in_wordlists FOR SELECT
   TO authenticated
   USING (true);
 
+DROP POLICY IF EXISTS "Anyone can read built_in_words" ON built_in_words;
 CREATE POLICY "Anyone can read built_in_words"
   ON built_in_words FOR SELECT
   TO authenticated
@@ -114,8 +140,10 @@ ALTER TABLE custom_words ENABLE ROW LEVEL SECURITY;
 ALTER TABLE user_word_state ENABLE ROW LEVEL SECURITY;
 ALTER TABLE sessions ENABLE ROW LEVEL SECURITY;
 ALTER TABLE user_settings ENABLE ROW LEVEL SECURITY;
+ALTER TABLE user_usage_exercises ENABLE ROW LEVEL SECURITY;
 
 -- custom_wordlists
+DROP POLICY IF EXISTS "Users can manage own custom_wordlists" ON custom_wordlists;
 CREATE POLICY "Users can manage own custom_wordlists"
   ON custom_wordlists FOR ALL
   TO authenticated
@@ -123,6 +151,7 @@ CREATE POLICY "Users can manage own custom_wordlists"
   WITH CHECK (auth.uid() = user_id);
 
 -- custom_words
+DROP POLICY IF EXISTS "Users can manage own custom_words" ON custom_words;
 CREATE POLICY "Users can manage own custom_words"
   ON custom_words FOR ALL
   TO authenticated
@@ -130,6 +159,7 @@ CREATE POLICY "Users can manage own custom_words"
   WITH CHECK (auth.uid() = user_id);
 
 -- user_word_state
+DROP POLICY IF EXISTS "Users can manage own user_word_state" ON user_word_state;
 CREATE POLICY "Users can manage own user_word_state"
   ON user_word_state FOR ALL
   TO authenticated
@@ -137,6 +167,7 @@ CREATE POLICY "Users can manage own user_word_state"
   WITH CHECK (auth.uid() = user_id);
 
 -- sessions
+DROP POLICY IF EXISTS "Users can manage own sessions" ON sessions;
 CREATE POLICY "Users can manage own sessions"
   ON sessions FOR ALL
   TO authenticated
@@ -144,8 +175,17 @@ CREATE POLICY "Users can manage own sessions"
   WITH CHECK (auth.uid() = user_id);
 
 -- user_settings
+DROP POLICY IF EXISTS "Users can manage own user_settings" ON user_settings;
 CREATE POLICY "Users can manage own user_settings"
   ON user_settings FOR ALL
+  TO authenticated
+  USING (auth.uid() = user_id)
+  WITH CHECK (auth.uid() = user_id);
+
+-- user_usage_exercises
+DROP POLICY IF EXISTS "Users can manage own user_usage_exercises" ON user_usage_exercises;
+CREATE POLICY "Users can manage own user_usage_exercises"
+  ON user_usage_exercises FOR ALL
   TO authenticated
   USING (auth.uid() = user_id)
   WITH CHECK (auth.uid() = user_id);
@@ -168,9 +208,15 @@ CREATE INDEX IF NOT EXISTS idx_built_in_words_wordlist
 CREATE INDEX IF NOT EXISTS idx_custom_words_wordlist
   ON custom_words(wordlist_id);
 
+CREATE INDEX IF NOT EXISTS idx_user_usage_exercises_word
+  ON user_usage_exercises(user_id, word);
+
 -- ============================================
 -- Insert built-in wordlists
 -- ============================================
 INSERT INTO built_in_wordlists (id, name, description) VALUES
   ('11111111-1111-1111-1111-111111111111', '七年级上册', '外研版新课标七年级上册词汇'),
-  ('22222222-2222-2222-2222-222222222222', '七年级下册', '外研版新课标七年级下册词汇');
+  ('22222222-2222-2222-2222-222222222222', '七年级下册', '外研版新课标七年级下册词汇')
+ON CONFLICT (id) DO UPDATE SET
+  name = EXCLUDED.name,
+  description = EXCLUDED.description;

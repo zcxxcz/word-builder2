@@ -21,18 +21,19 @@ export function getToday() {
 
 /**
  * Update word state based on review performance
- * Level only increases when BOTH recall and spelling pass during review.
+ * Level only increases when recall, spelling, and usage all pass during review.
  *
  * @param {object} currentState - { level, wrong_count, correct_streak }
  * @param {boolean} recallPassed - Did the user self-evaluate as "know"?
  * @param {boolean} spellingPassed - Did the user spell correctly on first try?
+ * @param {boolean} usagePassed - Did the user apply the word in a usage sentence?
  * @returns {object} Updated state fields
  */
-export function calculateLevelUpdate(currentState, recallPassed, spellingPassed) {
+export function calculateLevelUpdate(currentState, recallPassed, spellingPassed, usagePassed = true) {
     const { level = 0, wrong_count = 0, correct_streak = 0 } = currentState;
-    const bothPassed = recallPassed && spellingPassed;
+    const allPassed = recallPassed && spellingPassed && usagePassed;
 
-    if (bothPassed) {
+    if (allPassed) {
         const newLevel = Math.min(level + 1, MAX_LEVEL);
         return {
             level: newLevel,

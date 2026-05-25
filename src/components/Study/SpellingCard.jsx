@@ -3,6 +3,11 @@ import { speak } from '../../lib/tts';
 import { useSettingsStore } from '../../stores/settingsStore';
 import './StudyCards.css';
 
+function pickDisplayMeaning(word) {
+    const meanings = word.all_meanings?.length > 0 ? word.all_meanings : [word.meaning_cn];
+    return meanings[Math.floor(Math.random() * meanings.length)] || word.meaning_cn;
+}
+
 export default function SpellingCard({
     word,
     spellingResult,
@@ -13,20 +18,9 @@ export default function SpellingCard({
     onProceed,
 }) {
     const [input, setInput] = useState('');
+    const [displayMeaning] = useState(() => pickDisplayMeaning(word));
     const inputRef = useRef(null);
     const { settings } = useSettingsStore();
-
-    // Pick a random meaning for display
-    const displayMeaning = word.all_meanings
-        ? word.all_meanings[Math.floor(Math.random() * word.all_meanings.length)]
-        : word.meaning_cn;
-
-    useEffect(() => {
-        setInput('');
-        if (inputRef.current) {
-            inputRef.current.focus();
-        }
-    }, [word.word, needsCorrection, spellingResult]);
 
     // Auto-advance after correct spelling (1 second)
     useEffect(() => {
@@ -36,7 +30,7 @@ export default function SpellingCard({
             }, 1000);
             return () => clearTimeout(timer);
         }
-    }, [spellingResult, correctionDone]);
+    }, [spellingResult, correctionDone, onProceed]);
 
     const handleSpeak = () => {
         speak(word.word, { rate: settings.tts_rate, enabled: settings.tts_enabled });
@@ -52,6 +46,7 @@ export default function SpellingCard({
         }
 
         onSubmit(input);
+        setInput('');
 
         if (spellingResult === 'correct') {
             // Will auto-advance
@@ -98,6 +93,7 @@ export default function SpellingCard({
                     autoCapitalize="off"
                     autoCorrect="off"
                     spellCheck="false"
+                    autoFocus
                     disabled={spellingResult === 'correct' || correctionDone}
                 />
 
