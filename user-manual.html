@@ -1,0 +1,438 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Word Builder 使用手册</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --bg: #f6f7fb;
+      --surface: #ffffff;
+      --text: #1f2937;
+      --muted: #667085;
+      --line: #d9e0ea;
+      --primary: #2563eb;
+      --primary-soft: #e8f0ff;
+      --success: #047857;
+      --warning: #b45309;
+      --danger: #b42318;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Microsoft YaHei", sans-serif;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--text);
+      line-height: 1.7;
+    }
+
+    main {
+      width: min(920px, 100%);
+      margin: 0 auto;
+      padding: 24px 16px 56px;
+    }
+
+    header {
+      padding: 12px 0 18px;
+    }
+
+    h1 {
+      margin: 0 0 8px;
+      font-size: clamp(28px, 7vw, 42px);
+      line-height: 1.15;
+    }
+
+    .subtitle {
+      margin: 0;
+      color: var(--muted);
+      font-size: 15px;
+    }
+
+    nav {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+      gap: 8px;
+      margin: 18px 0 22px;
+    }
+
+    nav a {
+      display: block;
+      padding: 10px 12px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: var(--surface);
+      color: var(--primary);
+      font-weight: 700;
+      text-decoration: none;
+    }
+
+    section {
+      margin: 14px 0;
+      padding: 18px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: var(--surface);
+    }
+
+    h2 {
+      margin: 0 0 10px;
+      font-size: 21px;
+      line-height: 1.3;
+    }
+
+    h3 {
+      margin: 18px 0 8px;
+      font-size: 17px;
+    }
+
+    p {
+      margin: 8px 0;
+    }
+
+    ul,
+    ol {
+      padding-left: 1.25rem;
+      margin: 8px 0;
+    }
+
+    li {
+      margin: 6px 0;
+    }
+
+    .note {
+      padding: 12px;
+      border-radius: 8px;
+      background: var(--primary-soft);
+      color: #1e3a8a;
+      font-weight: 600;
+    }
+
+    .warning {
+      padding: 12px;
+      border-radius: 8px;
+      background: #fff7ed;
+      color: var(--warning);
+      font-weight: 600;
+    }
+
+    .danger {
+      color: var(--danger);
+      font-weight: 700;
+    }
+
+    .success {
+      color: var(--success);
+      font-weight: 700;
+    }
+
+    .table-wrap {
+      overflow-x: auto;
+      margin: 12px 0;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+    }
+
+    table {
+      width: 100%;
+      min-width: 620px;
+      border-collapse: collapse;
+      background: var(--surface);
+    }
+
+    th,
+    td {
+      padding: 10px 12px;
+      border-bottom: 1px solid var(--line);
+      text-align: left;
+      vertical-align: top;
+    }
+
+    th {
+      background: #f8fafc;
+      color: #344054;
+      font-size: 13px;
+      white-space: nowrap;
+    }
+
+    tr:last-child td {
+      border-bottom: 0;
+    }
+
+    .steps {
+      counter-reset: step;
+      list-style: none;
+      padding: 0;
+    }
+
+    .steps li {
+      counter-increment: step;
+      position: relative;
+      padding-left: 42px;
+      margin: 12px 0;
+    }
+
+    .steps li::before {
+      content: counter(step);
+      position: absolute;
+      left: 0;
+      top: 2px;
+      width: 28px;
+      height: 28px;
+      border-radius: 50%;
+      background: var(--primary);
+      color: white;
+      display: grid;
+      place-items: center;
+      font-weight: 800;
+      line-height: 1;
+    }
+
+    code {
+      padding: 2px 5px;
+      border-radius: 5px;
+      background: #eef2f7;
+      color: #344054;
+      font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+      font-size: 0.92em;
+    }
+
+    footer {
+      color: var(--muted);
+      font-size: 13px;
+      text-align: center;
+      padding: 16px 0 0;
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <header>
+      <h1>Word Builder 使用手册</h1>
+      <p class="subtitle">这份手册说明每天怎么学、怎么复习、错词怎么回流，以及进度为什么会变化。</p>
+    </header>
+
+    <nav aria-label="手册目录">
+      <a href="#quick-start">快速开始</a>
+      <a href="#today">今日页</a>
+      <a href="#new">新学单词</a>
+      <a href="#review">复习流程</a>
+      <a href="#relapse">错词回流</a>
+      <a href="#srs">等级和日期</a>
+      <a href="#resume">中断恢复</a>
+      <a href="#faq">常见问题</a>
+    </nav>
+
+    <section id="quick-start">
+      <h2>快速开始</h2>
+      <ol class="steps">
+        <li>先到“今日”查看待复习数量。如果有待复习，建议先点“开始复习”。</li>
+        <li>想学新词时，到“词表”选择整本词表、某个单元，或逐词勾选。</li>
+        <li>学习时按页面提示完成回想、拼写和场景应用。不要只看答案，要先自己想一遍。</li>
+        <li>学习结束后看战报。升级词越多，说明这轮复习完成得越扎实。</li>
+      </ol>
+      <p class="note">推荐顺序是：先复习到期词，再选择新词。新学结束后，系统会自动安排一轮“新词复习”。</p>
+    </section>
+
+    <section id="today">
+      <h2>今日页怎么看</h2>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>区域</th>
+              <th>含义</th>
+              <th>怎么操作</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>今日待复习</td>
+              <td>所有复习日期已经到今天或更早的词。</td>
+              <td>点击“开始复习”。每次只取一批，剩下的下次继续。</td>
+            </tr>
+            <tr>
+              <td>可新学</td>
+              <td>词表里还没有进入长期进度的词。</td>
+              <td>点击“去词表选择新词”。</td>
+            </tr>
+            <tr>
+              <td>继续未完成学习</td>
+              <td>上次学习没有正常完成，系统保存了进度。</td>
+              <td>点击后从上次停下的位置继续。</td>
+            </tr>
+            <tr>
+              <td>今日战报</td>
+              <td>今天最近一次完成的学习记录。</td>
+              <td>用来检查新学数、复习数、正确率和升级词数。</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <section id="new">
+      <h2>新学单词</h2>
+      <p>新学从“词表”页发起。你可以学整本词表、某个单元，或手动勾选几个词。单次新学数量受“每日新学量”限制。</p>
+      <h3>新学阶段每个词做两步</h3>
+      <ol>
+        <li><strong>意思回想：</strong>看英文，先想中文意思，再显示答案并自评。</li>
+        <li><strong>拼写打字：</strong>看中文，输入英文单词。第一次输入决定拼写是否通过。</li>
+      </ol>
+      <p class="warning">只完成新学两步，还不算真正进入长期进度。必须继续完成后面的“新词复习”。</p>
+      <h3>新词复习</h3>
+      <p>新学阶段结束后，系统会自动进入“新词复习”。它和到期复习一样，要做回想、拼写和场景应用。只有完成新词复习并得到明确结果，单词才会写入长期进度。</p>
+    </section>
+
+    <section id="review">
+      <h2>复习流程</h2>
+      <p>复习型阶段包括“到期复习”“新词复习”和“错词回流”。它们都使用同一套规则。</p>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>步骤</th>
+              <th>你会看到什么</th>
+              <th>通过条件</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>意思回想</td>
+              <td>英文单词、音标和发音按钮。</td>
+              <td>先自己想中文，显示答案后点“想对了”。</td>
+            </tr>
+            <tr>
+              <td>拼写打字</td>
+              <td>中文释义和输入框。</td>
+              <td>第一次输入就拼对。输错后必须再输入正确拼写，但本轮拼写仍算未通过。</td>
+            </tr>
+            <tr>
+              <td>场景应用</td>
+              <td>中文场景句，需要写完整英文句子，并用到目标词。</td>
+              <td>AI 批改通过。目标词可以按句子需要变形。</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      <p>复习时，系统通常会先让这一批词全部做“意思回想”，再全部做“拼写打字”，最后全部做“场景应用”。</p>
+    </section>
+
+    <section id="relapse">
+      <h2>错词回流</h2>
+      <p>当次学习或复习中出错的词，会先被记入错词回流队列。主阶段结束后，系统再集中安排回流练习。</p>
+      <h3>什么情况会进回流</h3>
+      <ul>
+        <li>意思回想点了“没想出来”。</li>
+        <li>拼写第一次输入错误。</li>
+        <li>场景应用没有通过。</li>
+      </ul>
+      <h3>回流会练哪些步骤</h3>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>进入回流的原因</th>
+              <th>回流步骤</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>回想错，或拼写首答错</td>
+              <td>重新做回想、拼写、场景应用三步。</td>
+            </tr>
+            <tr>
+              <td>只有场景应用没过，且回想和拼写都过了</td>
+              <td>只补场景应用。</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      <p class="note">回流不会无限循环。回流阶段再次出错，会记录错误，但本次学习结束后不会再开第二轮回流。</p>
+    </section>
+
+    <section id="srs">
+      <h2>等级和复习日期</h2>
+      <p>每个已完成复习的单词都有 L0 到 L3 的等级。等级越高，下次复习间隔越长。</p>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>等级</th>
+              <th>含义</th>
+              <th>下次复习</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>L0</td>
+              <td>陌生或刚出错</td>
+              <td>1 天后</td>
+            </tr>
+            <tr>
+              <td>L1</td>
+              <td>初步认识</td>
+              <td>2 天后</td>
+            </tr>
+            <tr>
+              <td>L2</td>
+              <td>比较熟练</td>
+              <td>5 天后</td>
+            </tr>
+            <tr>
+              <td>L3</td>
+              <td>掌握较好</td>
+              <td>10 天后</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      <p><span class="success">升级规则：</span>复习型阶段里，回想、拼写首答、场景应用三项都通过，等级加 1，最高到 L3。</p>
+      <p><span class="danger">降级规则：</span>三项中有明确未通过，等级减 1，最低到 L0。</p>
+      <p>学习日期按中国时间计算，所以凌晨学习也会归入正确的中国日期。</p>
+    </section>
+
+    <section id="resume">
+      <h2>学习中断恢复</h2>
+      <p>学习时刷新页面、关闭浏览器或换浏览器登录同一账号，系统会优先恢复未完成学习。</p>
+      <ul>
+        <li>正常关闭或刷新：再次进入学习页会回到上次步骤。</li>
+        <li>换浏览器：登录同一账号后，点击“继续未完成学习”或进入学习页即可恢复。</li>
+        <li>主动点退出：系统认为你放弃本次学习，会清除恢复点。</li>
+        <li>学习完成：系统保存战报，并清除恢复点。</li>
+      </ul>
+      <p class="warning">如果新词复习没有完成，这些词不会被当作已完成进度。下次仍可继续或重新学习。</p>
+    </section>
+
+    <section id="data">
+      <h2>数据导出和设置</h2>
+      <ul>
+        <li>在“我的”页可以调整每日新学量、单次复习上限、回流上限和发音设置。</li>
+        <li>“导出数据 (JSON)”会导出长期学习进度、学习记录、自定义词表和场景题缓存。</li>
+        <li>临时的未完成学习恢复点不会进入导出文件；它只用于继续当前学习。</li>
+        <li>“清空所有数据”会删除学习进度、学习记录、自定义词表、场景题缓存和未完成学习恢复点。</li>
+      </ul>
+    </section>
+
+    <section id="faq">
+      <h2>常见问题</h2>
+      <h3>为什么新学 4 个词，进度看起来不止 8 步？</h3>
+      <p>因为新学每词先做 2 步，随后还会自动做一轮新词复习，每词还要做回想、拼写和场景应用。答错后还可能进入回流。</p>
+      <h3>为什么拼错后再改对，还是算拼写未通过？</h3>
+      <p>拼写是否通过只看第一次输入。后面的纠正是为了加深记忆，不会把本轮拼写改成通过。</p>
+      <h3>场景题加载失败可以跳过吗？</h3>
+      <p>可以。跳过表示这个词本轮没有完成场景应用，不升级也不降级。之后还需要继续复习。</p>
+      <h3>为什么同一个英文词在不同词表里只显示一份进度？</h3>
+      <p>学习进度按英文单词本身记录。不同词表出现同一个英文词时，共用一份学习状态。</p>
+    </section>
+
+    <footer>
+      Word Builder 使用手册。建议先复习，再新学，最后看战报。
+    </footer>
+  </main>
+</body>
+</html>
