@@ -1,3 +1,4 @@
+import { useEffect } from 'react';
 import { speak } from '../../lib/tts';
 import { useSettingsStore } from '../../stores/settingsStore';
 import './StudyCards.css';
@@ -9,16 +10,33 @@ export default function RecallCard({ word, showAnswer, onReveal, onSubmit }) {
         speak(word.word, { rate: settings.tts_rate, enabled: settings.tts_enabled });
     };
 
-    const handleKeyDown = (e) => {
-        if (e.key === 'Enter') {
-            if (!showAnswer) {
+    useEffect(() => {
+        const handleDocumentKeyDown = (e) => {
+            const target = e.target;
+            const tagName = target?.tagName?.toLowerCase();
+            const isTypingTarget = tagName === 'input' || tagName === 'textarea' || tagName === 'select' || target?.isContentEditable;
+            const key = e.key.toLowerCase();
+
+            if (isTypingTarget || e.metaKey || e.ctrlKey || e.altKey || e.repeat) return;
+
+            if (e.key === 'Enter' && !showAnswer) {
+                e.preventDefault();
                 onReveal();
+            } else if (showAnswer && key === 'c') {
+                e.preventDefault();
+                onSubmit(true);
+            } else if (showAnswer && key === 'w') {
+                e.preventDefault();
+                onSubmit(false);
             }
-        }
-    };
+        };
+
+        window.addEventListener('keydown', handleDocumentKeyDown);
+        return () => window.removeEventListener('keydown', handleDocumentKeyDown);
+    }, [showAnswer, onReveal, onSubmit]);
 
     return (
-        <div className="study-card recall-card" onKeyDown={handleKeyDown} tabIndex={0}>
+        <div className="study-card recall-card">
             <div className="card-phase-label">意思回想</div>
 
             <div className="card-word">
@@ -63,6 +81,7 @@ export default function RecallCard({ word, showAnswer, onReveal, onSubmit }) {
                             ❌ 没想出来
                         </button>
                     </div>
+                    <p className="hint-keyboard">按 C 表示想对了，按 W 表示没想出来</p>
                 </div>
             )}
         </div>

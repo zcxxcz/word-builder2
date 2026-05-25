@@ -1,9 +1,9 @@
 import { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuthStore } from '../stores/authStore';
 import { useSettingsStore } from '../stores/settingsStore';
 import { useStudyStore } from '../stores/studyStore';
-import { generateDailyQueue } from '../utils/taskEngine';
+import { generateNewLearningQueue, generateReviewQueue } from '../utils/taskEngine';
 import { PHASE, STEP } from '../utils/constants';
 import RecallCard from '../components/Study/RecallCard';
 import SpellingCard from '../components/Study/SpellingCard';
@@ -13,20 +13,28 @@ import './StudyPage.css';
 
 export default function StudyPage() {
     const navigate = useNavigate();
+    const [searchParams] = useSearchParams();
     const { user } = useAuthStore();
-    const { settings } = useSettingsStore();
+    const { settings, loadSettings, loaded } = useSettingsStore();
     const study = useStudyStore();
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState('');
+    const routeKey = searchParams.toString();
 
     useEffect(() => {
-        if (user) {
+        if (user && !loaded) {
+            loadSettings(user.id);
+        }
+    }, [user, loaded]);
+
+    useEffect(() => {
+        if (user && loaded) {
             initSession();
         }
         return () => {
             // Don't reset on unmount if complete (want to show report)
         };
-    }, [user]);
+    }, [user, loaded, routeKey]);
 
     const initSession = async () => {
         try {
@@ -43,23 +51,67 @@ export default function StudyPage() {
                 study.resetSession();
             }
 
+            const mode = searchParams.get('mode');
             study.setSessionSettings(settings);
-            const { reviewWords, newWords } = await generateDailyQueue(settings, user.id);
 
-            if (reviewWords.length === 0 && newWords.length === 0) {
-                setError('今日没有需要学习的单词！');
+            if (mode === 'review') {
+                const { reviewWords } = await generateReviewQueue(settings, user.id);
+
+                if (reviewWords.length === 0) {
+                    setError('当前没有到期复习的单词！');
+                    setLoading(false);
+                    return;
+                }
+
+                study.startSession(reviewWords, [], user.id, 'review');
+                console.log('start_session', { type: 'review' });
+            } else if (mode === 'new') {
+                const selection = getNewLearningSelection();
+                const { newWords } = await generateNewLearningQueue(settings, user.id, selection);
+
+                if (newWords.length === 0) {
+                    setError('这个选择里没有可新学的单词！');
+                    setLoading(false);
+                    return;
+                }
+
+                study.startSession([], newWords, user.id, 'new');
+                console.log('start_session', { type: 'new' });
+            } else {
+                setError('请选择复习，或先到词表里选择要新学的单词。');
                 setLoading(false);
                 return;
             }
-
-            study.startSession(reviewWords, newWords, user.id);
-            console.log('start_session', { type: 'all' });
         } catch (err) {
             console.error('Failed to init session:', err);
             setError('加载失败：' + err.message);
         } finally {
             setLoading(false);
         }
+    };
+
+    const getNewLearningSelection = () => {
+        const source = searchParams.get('source');
+        const listId = searchParams.get('listId');
+        const unit = searchParams.get('unit');
+        const ids = (searchParams.get('ids') || '')
+            .split(',')
+            .map(id => id.trim())
+            .filter(Boolean);
+
+        if (!['builtin', 'custom'].includes(source)) {
+            throw new Error('请选择有效的词表来源');
+        }
+
+        if (ids.length > 0) {
+            return { source, ids };
+        }
+
+        if (!listId) {
+            throw new Error('请选择要新学的词表');
+        }
+
+        return unit ? { source, listId, unit } : { source, listId };
     };
 
     // Auto-speak on new recall card
@@ -70,8 +122,9 @@ export default function StudyPage() {
     }, [study.currentWord?.word, study.step]);
 
     const handleExit = () => {
+        const exitTarget = study.sessionType === 'new' ? '/wordlist' : '/';
         study.resetSession();
-        navigate('/');
+        navigate(exitTarget);
     };
 
     const getPhaseLabel = () => {
@@ -105,7 +158,8 @@ export default function StudyPage() {
             <div className="study-page">
                 <div className="study-error">
                     <p>{error}</p>
-                    <button className="btn-primary" onClick={() => navigate('/')}>返回首页</button>
+                    <button className="btn-primary" onClick={() => navigate('/')}>返回今日</button>
+                    <button className="btn-secondary" onClick={() => navigate('/wordlist')}>去词表</button>
                 </div>
             </div>
         );

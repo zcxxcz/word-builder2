@@ -44,7 +44,7 @@
     font-weight: 600;
     color: var(--primary);
     text-transform: uppercase;
-    letter-spacing: 1px;
+    letter-spacing: 0;
 }
 
 .progress-count {
@@ -83,6 +83,32 @@
     justify-content: center;
     gap: 16px;
     color: var(--text-secondary);
+}
+
+.study-error {
+    padding: 24px;
+}
+
+.study-error p {
+    text-align: center;
+    margin: 0;
+}
+
+.study-error .btn-primary,
+.study-error .btn-secondary {
+    width: 100%;
+    max-width: 240px;
+}
+
+.btn-secondary {
+    padding: 14px 24px;
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    background: var(--surface);
+    color: var(--text-primary);
+    font-size: 15px;
+    font-weight: 700;
+    cursor: pointer;
 }
 
 .loading-spinner {

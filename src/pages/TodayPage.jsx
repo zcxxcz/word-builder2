@@ -52,12 +52,16 @@ export default function TodayPage() {
         setTodaySession(data);
     };
 
-    const startStudy = () => {
-        navigate('/study');
+    const startReview = () => {
+        navigate('/study?mode=review');
+    };
+
+    const chooseNewWords = () => {
+        navigate('/wordlist');
     };
 
     const estimatedMinutes = counts
-        ? Math.ceil((counts.reviewCount + counts.newCount) * 0.5)
+        ? Math.ceil((counts.reviewBatchCount || 0) * 0.5)
         : 0;
 
     return (
@@ -78,12 +82,12 @@ export default function TodayPage() {
                     <div className="today-stats">
                         <div className="stat-card stat-review">
                             <div className="stat-number">{counts?.reviewCount || 0}</div>
-                            <div className="stat-label">待复习</div>
+                            <div className="stat-label">今日待复习</div>
                             <div className="stat-icon">🔄</div>
                         </div>
                         <div className="stat-card stat-new">
                             <div className="stat-number">{counts?.newCount || 0}</div>
-                            <div className="stat-label">新学习</div>
+                            <div className="stat-label">可新学</div>
                             <div className="stat-icon">✨</div>
                         </div>
                         <div className="stat-card stat-time">
@@ -95,13 +99,24 @@ export default function TodayPage() {
 
                     {(counts?.reviewCount > 0 || counts?.newCount > 0) ? (
                         <div className="today-actions">
-                            <button className="btn-start" onClick={startStudy}>
-                                <span className="btn-start-icon">🚀</span>
-                                <span>开始学习</span>
-                                <span className="btn-start-count">
-                                    共 {(counts?.reviewCount || 0) + (counts?.newCount || 0)} 词
-                                </span>
-                            </button>
+                            {counts?.reviewCount > 0 && (
+                                <button className="btn-start btn-start-review" onClick={startReview}>
+                                    <span className="btn-start-icon">🔄</span>
+                                    <span>开始复习</span>
+                                    <span className="btn-start-count">
+                                        本次 {counts?.reviewBatchCount || 0} / 共 {counts?.reviewCount || 0} 词
+                                    </span>
+                                </button>
+                            )}
+                            {counts?.newCount > 0 && (
+                                <button className="btn-start btn-start-new" onClick={chooseNewWords}>
+                                    <span className="btn-start-icon">✨</span>
+                                    <span>去词表选择新词</span>
+                                    <span className="btn-start-count">
+                                        可新学 {counts?.newCount || 0} 词
+                                    </span>
+                                </button>
+                            )}
                         </div>
                     ) : (
                         <div className="today-complete">

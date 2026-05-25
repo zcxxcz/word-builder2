@@ -27,7 +27,7 @@ function normalizeWord(word) {
  * Call the Supabase Edge Function to generate word content via DeepSeek API
  * The API key is securely stored on the server side.
  * @param {string} word - English word to generate content for
- * @returns {Promise<{meaning_cn: string, phonetic: string, example: string}>}
+ * @returns {Promise<{meaning_cn: string, phonetic: string, example: string, usage_prompt_cn: string}>}
  */
 export async function generateWordContent(word) {
     // Check daily limit (30 per day) - quick UI feedback
@@ -61,6 +61,7 @@ export async function generateWordContent(word) {
             meaning_cn: data.meaning_cn || '未找到释义',
             phonetic: data.phonetic || '',
             example: data.example || '',
+            usage_prompt_cn: data.usage_prompt_cn || '',
         };
     } catch (err) {
         if (err.message.includes('今日AI')) throw err;
@@ -92,6 +93,20 @@ export async function getUsageExercise(word, meaningCn) {
     if (cacheError) throw cacheError;
     if (cached?.prompt_cn && cached?.reference_answer_en) {
         return cached;
+    }
+
+    const { data: wordCached, error: wordCacheError } = await supabase
+        .from('user_usage_exercises')
+        .select('prompt_cn, reference_answer_en')
+        .eq('user_id', userId)
+        .eq('word', wordKey)
+        .order('updated_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+    if (wordCacheError) throw wordCacheError;
+    if (wordCached?.prompt_cn && wordCached?.reference_answer_en) {
+        return wordCached;
     }
 
     const usage = checkDailyLimit('deepseek_usage_gen', 200);

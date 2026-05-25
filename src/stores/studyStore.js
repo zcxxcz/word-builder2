@@ -4,6 +4,79 @@ import { supabase } from '../lib/supabase';
 import { PHASE, STEP } from '../utils/constants';
 import { calculateLevelUpdate, getNextReviewDate, getToday, shuffle } from '../utils/srs';
 
+const FULL_REVIEW_STEPS = [STEP.RECALL, STEP.SPELLING, STEP.USAGE];
+
+function normalizeRelapseSteps(steps) {
+    if (!Array.isArray(steps) || steps.length === 0) {
+        return [...FULL_REVIEW_STEPS];
+    }
+
+    const allowed = new Set(FULL_REVIEW_STEPS);
+    const requested = new Set(steps.filter(step => allowed.has(step)));
+    const normalized = FULL_REVIEW_STEPS.filter(step => requested.has(step));
+    return normalized.length > 0 ? normalized : [...FULL_REVIEW_STEPS];
+}
+
+function mergeRelapseSteps(existingSteps, incomingSteps) {
+    const merged = new Set([
+        ...normalizeRelapseSteps(existingSteps),
+        ...normalizeRelapseSteps(incomingSteps),
+    ]);
+    return FULL_REVIEW_STEPS.filter(step => merged.has(step));
+}
+
+function upsertRelapseWord(relapseWords, word, relapseSteps) {
+    const wordKey = word.word.toLowerCase();
+    const normalizedSteps = normalizeRelapseSteps(relapseSteps);
+    const existingIndex = relapseWords.findIndex(w => w.word.toLowerCase() === wordKey);
+
+    if (existingIndex === -1) {
+        return [...relapseWords, { ...word, _relapseSteps: normalizedSteps }];
+    }
+
+    return relapseWords.map((w, index) => {
+        if (index !== existingIndex) return w;
+        return {
+            ...w,
+            _relapseSteps: mergeRelapseSteps(w._relapseSteps, normalizedSteps),
+        };
+    });
+}
+
+function mergeRelapseWords(relapseWords, wordsToAdd) {
+    return wordsToAdd.reduce(
+        (merged, word) => upsertRelapseWord(merged, word, word._relapseSteps),
+        relapseWords
+    );
+}
+
+function getPhaseRelapseWords(words, wordPhaseResults) {
+    return words.reduce((relapseWords, word) => {
+        const wordKey = word.word.toLowerCase();
+        const results = wordPhaseResults[wordKey];
+        if (!results) return relapseWords;
+
+        const hasFailed = results.recallPassed === false ||
+            results.spellingPassed === false ||
+            results.usagePassed === false;
+        if (!hasFailed) return relapseWords;
+
+        const relapseSteps = results.recallPassed === true &&
+            results.spellingPassed === true &&
+            results.usagePassed === false
+            ? [STEP.USAGE]
+            : FULL_REVIEW_STEPS;
+
+        return upsertRelapseWord(relapseWords, word, relapseSteps);
+    }, []);
+}
+
+function getRelapseItemCount(relapseWords, relapseCap) {
+    return relapseWords
+        .slice(0, relapseCap)
+        .reduce((total, word) => total + normalizeRelapseSteps(word._relapseSteps).length, 0);
+}
+
 const emptySessionResults = {
     startTime: null,
     newCount: 0,
@@ -58,6 +131,7 @@ export const useStudyStore = create(persist((set, get) => ({
     // Session state  
     isActive: false,
     sessionUserId: null,
+    sessionType: null,
     showAnswer: false,
     spellingResult: null,  // null, 'correct', 'incorrect'
     correctSpelling: '',
@@ -67,13 +141,14 @@ export const useStudyStore = create(persist((set, get) => ({
     /**
      * Initialize a study session with pre-generated queues
      */
-    startSession: (reviewWords, newWords, userId) => {
+    startSession: (reviewWords, newWords, userId, sessionType = 'all') => {
         set({
             reviewWords,
             newWords,
             relapseWords: [],
             isActive: true,
             sessionUserId: userId,
+            sessionType,
             sessionResults: {
                 startTime: Date.now(),
                 newCount: newWords.length,
@@ -134,12 +209,33 @@ export const useStudyStore = create(persist((set, get) => ({
             });
         } else {
             // Review/new_review/relapse: all Step A, then B, then usage application.
-            const shuffled = shuffle(words);
-            const stepAQueue = shuffled.map(w => ({ ...w, _step: STEP.RECALL }));
-            const stepBQueue = shuffle(words).map(w => ({ ...w, _step: STEP.SPELLING }));
-            const stepCQueue = shuffle(words).map(w => ({ ...w, _step: STEP.USAGE }));
+            const wordsForStep = (step) => {
+                if (phase !== PHASE.RELAPSE) return words;
+                return words.filter(w => normalizeRelapseSteps(w._relapseSteps).includes(step));
+            };
+
+            const stepAQueue = shuffle(wordsForStep(STEP.RECALL)).map(w => ({ ...w, _step: STEP.RECALL }));
+            const stepBQueue = shuffle(wordsForStep(STEP.SPELLING)).map(w => ({ ...w, _step: STEP.SPELLING }));
+            const stepCQueue = shuffle(wordsForStep(STEP.USAGE)).map(w => ({ ...w, _step: STEP.USAGE }));
 
             const fullQueue = [...stepAQueue, ...stepBQueue, ...stepCQueue];
+            const seededWordResults = {};
+
+            if (phase === PHASE.RELAPSE) {
+                for (const word of words) {
+                    const steps = normalizeRelapseSteps(word._relapseSteps);
+                    const wordKey = word.word.toLowerCase();
+                    seededWordResults[wordKey] = {};
+                    if (!steps.includes(STEP.RECALL)) seededWordResults[wordKey].recallPassed = true;
+                    if (!steps.includes(STEP.SPELLING)) seededWordResults[wordKey].spellingPassed = true;
+                }
+            }
+
+            if (fullQueue.length === 0) {
+                get().advancePhase();
+                return;
+            }
+
             set({
                 phase,
                 queue: fullQueue.slice(1),
@@ -148,7 +244,7 @@ export const useStudyStore = create(persist((set, get) => ({
                 stepCQueue,
                 currentWord: fullQueue[0],
                 step: fullQueue[0]._step,
-                wordPhaseResults: {},
+                wordPhaseResults: seededWordResults,
                 showAnswer: false,
                 spellingResult: null,
                 needsCorrection: false,
@@ -273,7 +369,11 @@ export const useStudyStore = create(persist((set, get) => ({
         if (passed) {
             newResults.usagePassed++;
         } else {
-            get().addToRelapse(currentWord);
+            const currentPhaseResults = wordPhaseResults[wordKey] || {};
+            const relapseSteps = currentPhaseResults.recallPassed === true && currentPhaseResults.spellingPassed === true
+                ? [STEP.USAGE]
+                : FULL_REVIEW_STEPS;
+            get().addToRelapse(currentWord, relapseSteps);
             if (!newResults.wordErrors[wordKey]) {
                 newResults.wordErrors[wordKey] = 0;
             }
@@ -319,12 +419,9 @@ export const useStudyStore = create(persist((set, get) => ({
     /**
      * Add word to relapse queue
      */
-    addToRelapse: (word) => {
+    addToRelapse: (word, relapseSteps = FULL_REVIEW_STEPS) => {
         const { relapseWords } = get();
-        const exists = relapseWords.some(w => w.word.toLowerCase() === word.word.toLowerCase());
-        if (!exists) {
-            set({ relapseWords: [...relapseWords, word] });
-        }
+        set({ relapseWords: upsertRelapseWord(relapseWords, word, relapseSteps) });
     },
 
     /**
@@ -409,14 +506,24 @@ export const useStudyStore = create(persist((set, get) => ({
      * Advance to next phase
      */
     advancePhase: () => {
-        const { phase, newWords, relapseWords } = get();
+        const { phase, reviewWords, newWords, relapseWords, sessionType, wordPhaseResults } = get();
         const settings = get().sessionSettings || {};
+        let effectiveRelapseWords = relapseWords;
+
+        if (phase === PHASE.REVIEW || phase === PHASE.NEW_REVIEW) {
+            const phaseWords = phase === PHASE.REVIEW ? reviewWords : newWords;
+            effectiveRelapseWords = mergeRelapseWords(
+                relapseWords,
+                getPhaseRelapseWords(phaseWords, wordPhaseResults)
+            );
+            set({ relapseWords: effectiveRelapseWords });
+        }
 
         if (phase === PHASE.REVIEW) {
-            if (newWords.length > 0) {
+            if (sessionType !== 'review' && newWords.length > 0) {
                 get().startPhase(PHASE.NEW_LEARN, newWords);
-            } else if (relapseWords.length > 0) {
-                get().startPhase(PHASE.RELAPSE, relapseWords.slice(0, settings.relapse_cap || 10));
+            } else if (effectiveRelapseWords.length > 0) {
+                get().startPhase(PHASE.RELAPSE, effectiveRelapseWords.slice(0, settings.relapse_cap || 10));
             } else {
                 get().completeSession();
             }
@@ -431,9 +538,9 @@ export const useStudyStore = create(persist((set, get) => ({
                 }
             });
         } else if (phase === PHASE.NEW_REVIEW) {
-            if (relapseWords.length > 0) {
+            if (effectiveRelapseWords.length > 0) {
                 const { relapse_cap = 10 } = settings;
-                get().startPhase(PHASE.RELAPSE, relapseWords.slice(0, relapse_cap));
+                get().startPhase(PHASE.RELAPSE, effectiveRelapseWords.slice(0, relapse_cap));
             } else {
                 get().completeSession();
             }
@@ -479,7 +586,7 @@ export const useStudyStore = create(persist((set, get) => ({
      * Complete the session and save record
      */
     completeSession: async () => {
-        const { sessionResults } = get();
+        const { sessionResults, sessionType } = get();
         const userId = (await supabase.auth.getUser()).data.user?.id;
 
         const duration = Math.round((Date.now() - sessionResults.startTime) / 1000);
@@ -500,7 +607,7 @@ export const useStudyStore = create(persist((set, get) => ({
         const sessionRecord = {
             user_id: userId,
             date: getToday(),
-            type: 'all',
+            type: sessionType || 'all',
             new_count: sessionResults.newCount,
             review_count: sessionResults.reviewCount,
             spelling_accuracy: Math.round(accuracy * 100) / 100,
@@ -570,6 +677,7 @@ export const useStudyStore = create(persist((set, get) => ({
             wordPhaseResults: {},
             isActive: false,
             sessionUserId: null,
+            sessionType: null,
             showAnswer: false,
             spellingResult: null,
             correctSpelling: '',
@@ -584,9 +692,9 @@ export const useStudyStore = create(persist((set, get) => ({
     getTotalItems: () => {
         const { reviewWords, newWords, relapseWords } = get();
         const settings = get().sessionSettings || {};
-        const relapseCount = Math.min(relapseWords.length, settings.relapse_cap || 10);
+        const relapseItemCount = getRelapseItemCount(relapseWords, settings.relapse_cap || 10);
         // Review/relapse: 3 steps. New: 2 learning steps + 3 review steps.
-        return (reviewWords.length * 3) + (newWords.length * 5) + (relapseCount * 3);
+        return (reviewWords.length * 3) + (newWords.length * 5) + relapseItemCount;
     },
 
     /**
@@ -597,15 +705,15 @@ export const useStudyStore = create(persist((set, get) => ({
         const total = state.getTotalItems();
         const currentRemaining = state.currentWord ? state.queue.length + 1 : 0;
         const settings = state.sessionSettings || {};
-        const relapseCount = Math.min(state.relapseWords.length, settings.relapse_cap || 10);
+        const relapseItemCount = getRelapseItemCount(state.relapseWords, settings.relapse_cap || 10);
 
         let futureRemaining = 0;
         if (state.phase === PHASE.REVIEW) {
-            futureRemaining = (state.newWords.length * 5) + (relapseCount * 3);
+            futureRemaining = (state.newWords.length * 5) + relapseItemCount;
         } else if (state.phase === PHASE.NEW_LEARN) {
-            futureRemaining = (state.newWords.length * 3) + (relapseCount * 3);
+            futureRemaining = (state.newWords.length * 3) + relapseItemCount;
         } else if (state.phase === PHASE.NEW_REVIEW) {
-            futureRemaining = relapseCount * 3;
+            futureRemaining = relapseItemCount;
         }
 
         return Math.max(0, total - currentRemaining - futureRemaining);
@@ -627,6 +735,7 @@ export const useStudyStore = create(persist((set, get) => ({
         wordPhaseResults: state.wordPhaseResults,
         isActive: state.isActive,
         sessionUserId: state.sessionUserId,
+        sessionType: state.sessionType,
         showAnswer: state.showAnswer,
         spellingResult: state.spellingResult,
         correctSpelling: state.correctSpelling,

@@ -2,21 +2,87 @@ import { supabase } from '../lib/supabase';
 import { REVIEW_BATCH_LIMIT } from './constants';
 import { getToday, shuffle } from './srs';
 
-/**
- * Generate the daily study task queue.
- *
- * Order: Review (due) → New words → (Relapse collected during session)
- *
- * @param {object} settings - { daily_new, review_cap, relapse_cap }
- * @param {string} userId
- * @returns {Promise<{ reviewWords: Array, newWords: Array }>}
- */
-export async function generateDailyQueue(settings, userId) {
-    const today = getToday();
-    const { daily_new = 10, review_cap = REVIEW_BATCH_LIMIT } = settings;
-    const effectiveReviewCap = Math.min(review_cap, REVIEW_BATCH_LIMIT);
+const normalizeWord = (word) => (word || '').trim().toLowerCase();
 
-    // 1. Due reviews: words with next_review_at <= today
+const getEffectiveReviewCap = (settings = {}) => (
+    Math.min(settings.review_cap ?? REVIEW_BATCH_LIMIT, REVIEW_BATCH_LIMIT)
+);
+
+const getDailyNewLimit = (settings = {}) => settings.daily_new ?? 10;
+
+async function getStudiedWordSet(userId) {
+    const { data, error } = await supabase
+        .from('user_word_state')
+        .select('word')
+        .eq('user_id', userId);
+
+    if (error) throw error;
+
+    return new Set((data || []).map(s => normalizeWord(s.word)));
+}
+
+async function fetchWordsBySelection(selection, userId) {
+    if (!selection || !['builtin', 'custom'].includes(selection.source)) {
+        throw new Error('请选择要新学的词表');
+    }
+
+    const isBuiltIn = selection.source === 'builtin';
+    const table = isBuiltIn ? 'built_in_words' : 'custom_words';
+    let query = supabase.from(table).select('*');
+
+    if (!isBuiltIn) {
+        query = query.eq('user_id', userId);
+    }
+
+    const ids = (selection.ids || []).filter(Boolean);
+    if (ids.length > 0) {
+        query = query.in('id', ids);
+    } else if (selection.listId) {
+        query = query.eq('wordlist_id', selection.listId).order('id', { ascending: true });
+    } else {
+        throw new Error('请选择要新学的词表');
+    }
+
+    const { data, error } = await query;
+    if (error) throw error;
+
+    let words = data || [];
+    if (selection.unit) {
+        words = words.filter(w => (w.unit || '未分组') === selection.unit);
+    }
+
+    if (ids.length > 0) {
+        const order = new Map(ids.map((id, index) => [id, index]));
+        words = [...words].sort((a, b) => (order.get(a.id) ?? 0) - (order.get(b.id) ?? 0));
+    }
+
+    return words;
+}
+
+function takeUnstudiedUniqueWords(words, studiedWords, limit = Infinity) {
+    const seen = new Set();
+    const result = [];
+
+    for (const word of words) {
+        const key = normalizeWord(word.word);
+        if (!key || studiedWords.has(key) || seen.has(key)) continue;
+
+        seen.add(key);
+        result.push(word);
+        if (result.length >= limit) break;
+    }
+
+    return result;
+}
+
+/**
+ * Generate one review batch. review_cap limits this session only; due words not
+ * included here remain due because their next_review_at is unchanged.
+ */
+export async function generateReviewQueue(settings, userId) {
+    const today = getToday();
+    const effectiveReviewCap = getEffectiveReviewCap(settings);
+
     const { data: reviewStates, error: reviewErr } = await supabase
         .from('user_word_state')
         .select('*')
@@ -27,85 +93,60 @@ export async function generateDailyQueue(settings, userId) {
 
     if (reviewErr) throw reviewErr;
 
-    // Get full word info for review words
-    const reviewWords = await enrichWordsFromState(reviewStates || []);
+    const reviewWords = await enrichWordsFromState(reviewStates || [], userId);
+    return { reviewWords: shuffle(reviewWords) };
+}
 
-    // 2. New words: words the user has never studied
-    // Get all words the user has already studied
-    const { data: allStates, error: stateErr } = await supabase
-        .from('user_word_state')
-        .select('word')
-        .eq('user_id', userId);
+/**
+ * Generate a new-learning queue from a user selection in the wordlist page.
+ */
+export async function generateNewLearningQueue(settings, userId, selection) {
+    const dailyNewLimit = getDailyNewLimit(settings);
+    const studiedWords = await getStudiedWordSet(userId);
+    const candidateWords = await fetchWordsBySelection(selection, userId);
+    const newWords = takeUnstudiedUniqueWords(candidateWords, studiedWords, dailyNewLimit);
 
-    if (stateErr) throw stateErr;
+    return { newWords };
+}
 
-    const studiedWords = new Set((allStates || []).map(s => s.word.toLowerCase()));
-
-    // Get built-in words not yet studied
-    const { data: allBuiltIn, error: builtInErr } = await supabase
-        .from('built_in_words')
-        .select('*')
-        .order('id', { ascending: true });
-
-    if (builtInErr) throw builtInErr;
-
-    // Also get custom words
-    const { data: allCustom, error: customErr } = await supabase
-        .from('custom_words')
-        .select('*')
-        .eq('user_id', userId);
-
-    if (customErr) throw customErr;
-
-    // Combine and deduplicate by word text
-    const allWords = [...(allBuiltIn || []), ...(allCustom || [])];
-    const seen = new Set();
-    const unseenWords = [];
-
-    for (const w of allWords) {
-        const key = w.word.toLowerCase();
-        if (!studiedWords.has(key) && !seen.has(key)) {
-            seen.add(key);
-            unseenWords.push(w);
-        }
-    }
-
-    const newWords = unseenWords.slice(0, daily_new);
-
-    return {
-        reviewWords: shuffle(reviewWords),
-        newWords, // new words keep order for learning, shuffle happens in review phase
-    };
+/**
+ * Backward-compatible wrapper for older callers. New UI should use
+ * generateReviewQueue and generateNewLearningQueue separately.
+ */
+export async function generateDailyQueue(settings, userId) {
+    const { reviewWords } = await generateReviewQueue(settings, userId);
+    return { reviewWords, newWords: [] };
 }
 
 /**
  * Enrich word state records with full word data (meaning, phonetic, example)
  */
-async function enrichWordsFromState(states) {
+async function enrichWordsFromState(states, userId) {
     if (states.length === 0) return [];
 
     const words = states.map(s => s.word);
 
-    // Try built-in words first
     const { data: builtIn } = await supabase
         .from('built_in_words')
         .select('*')
         .in('word', words);
 
-    // Also check custom words
-    const { data: custom } = await supabase
+    let customQuery = supabase
         .from('custom_words')
         .select('*');
 
+    if (userId) {
+        customQuery = customQuery.eq('user_id', userId);
+    }
+
+    const { data: custom } = await customQuery;
     const wordMap = {};
 
-    // Built-in words (may have duplicates, take first)
     for (const w of (builtIn || [])) {
-        const key = w.word.toLowerCase();
+        const key = normalizeWord(w.word);
         if (!wordMap[key]) {
             wordMap[key] = w;
         } else {
-            // Collect all meanings for random selection
             if (!wordMap[key].all_meanings) {
                 wordMap[key].all_meanings = [wordMap[key].meaning_cn];
             }
@@ -115,16 +156,15 @@ async function enrichWordsFromState(states) {
         }
     }
 
-    // Custom words
     for (const w of (custom || [])) {
-        const key = w.word.toLowerCase();
+        const key = normalizeWord(w.word);
         if (!wordMap[key]) {
             wordMap[key] = w;
         }
     }
 
     return states.map(state => {
-        const wordData = wordMap[state.word.toLowerCase()] || {};
+        const wordData = wordMap[normalizeWord(state.word)] || {};
         return {
             ...wordData,
             ...state,
@@ -135,14 +175,12 @@ async function enrichWordsFromState(states) {
 }
 
 /**
- * Get count of due reviews and available new words
+ * Get counts for the Today page.
  */
 export async function getTaskCounts(settings, userId) {
     const today = getToday();
-    const { daily_new = 10, review_cap = REVIEW_BATCH_LIMIT } = settings;
-    const effectiveReviewCap = Math.min(review_cap, REVIEW_BATCH_LIMIT);
+    const effectiveReviewCap = getEffectiveReviewCap(settings);
 
-    // Count due reviews
     const { count: reviewCount, error: reviewErr } = await supabase
         .from('user_word_state')
         .select('*', { count: 'exact', head: true })
@@ -151,35 +189,39 @@ export async function getTaskCounts(settings, userId) {
 
     if (reviewErr) throw reviewErr;
 
-    // Count studied words
-    const { count: studiedCount, error: stateErr } = await supabase
-        .from('user_word_state')
-        .select('*', { count: 'exact', head: true })
-        .eq('user_id', userId);
+    const studiedWords = await getStudiedWordSet(userId);
 
-    if (stateErr) throw stateErr;
-
-    // Count total available words
-    const { count: totalBuiltIn, error: builtInErr } = await supabase
+    const { data: builtInWords, error: builtInErr } = await supabase
         .from('built_in_words')
-        .select('*', { count: 'exact', head: true });
+        .select('word');
 
     if (builtInErr) throw builtInErr;
 
-    const { count: totalCustom, error: customErr } = await supabase
+    const { data: customWords, error: customErr } = await supabase
         .from('custom_words')
-        .select('*', { count: 'exact', head: true })
+        .select('word')
         .eq('user_id', userId);
 
     if (customErr) throw customErr;
 
-    const totalWords = (totalBuiltIn || 0) + (totalCustom || 0);
-    const availableNew = Math.max(0, totalWords - (studiedCount || 0));
+    const allWordKeys = new Set();
+    for (const word of [...(builtInWords || []), ...(customWords || [])]) {
+        const key = normalizeWord(word.word);
+        if (key) allWordKeys.add(key);
+    }
+
+    let availableNew = 0;
+    for (const word of allWordKeys) {
+        if (!studiedWords.has(word)) availableNew++;
+    }
+
+    const dueCount = reviewCount || 0;
 
     return {
-        reviewCount: Math.min(reviewCount || 0, effectiveReviewCap),
-        newCount: Math.min(availableNew, daily_new),
-        totalStudied: studiedCount || 0,
-        totalWords,
+        reviewCount: dueCount,
+        reviewBatchCount: Math.min(dueCount, effectiveReviewCap),
+        newCount: availableNew,
+        totalStudied: studiedWords.size,
+        totalWords: allWordKeys.size,
     };
 }

@@ -1,16 +1,28 @@
 import { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useAuthStore } from '../stores/authStore';
+import { useSettingsStore } from '../stores/settingsStore';
 import { supabase } from '../lib/supabase';
 import { generateWordContent } from '../lib/deepseek';
 import './WordlistPage.css';
 
+const normalizeWord = (word) => (word || '').trim().toLowerCase();
+
 export default function WordlistPage() {
     const { user } = useAuthStore();
+    const { settings, loadSettings, loaded } = useSettingsStore();
+    const navigate = useNavigate();
+
     const [activeTab, setActiveTab] = useState('builtin');
     const [wordlists, setWordlists] = useState([]);
     const [customWordlists, setCustomWordlists] = useState([]);
     const [selectedList, setSelectedList] = useState(null);
+    const [selectedListSource, setSelectedListSource] = useState(null);
+    const [selectedListName, setSelectedListName] = useState('');
     const [words, setWords] = useState([]);
+    const [studiedWords, setStudiedWords] = useState(new Set());
+    const [selectedWordIds, setSelectedWordIds] = useState([]);
+    const [selectionError, setSelectionError] = useState('');
     const [loading, setLoading] = useState(true);
 
     // Add word modal
@@ -30,7 +42,11 @@ export default function WordlistPage() {
     const [showCreateList, setShowCreateList] = useState(false);
     const [newListName, setNewListName] = useState('');
 
+    const dailyNewLimit = settings.daily_new || 10;
+
     const loadWordlists = async () => {
+        if (!user) return;
+
         setLoading(true);
         try {
             const { data: builtIn } = await supabase
@@ -52,21 +68,128 @@ export default function WordlistPage() {
     };
 
     useEffect(() => {
+        if (user && !loaded) {
+            loadSettings(user.id);
+        }
+    }, [user, loaded]);
+
+    useEffect(() => {
         const timer = setTimeout(() => {
             loadWordlists();
         }, 0);
         return () => clearTimeout(timer);
-    }, []);
+    }, [user]);
 
-    const loadWords = async (listId, isBuiltIn) => {
-        setSelectedList(listId);
-        const table = isBuiltIn ? 'built_in_words' : 'custom_words';
+    const loadStudiedWords = async (listWords) => {
+        const wordKeys = [...new Set(listWords.map(w => normalizeWord(w.word)).filter(Boolean))];
+        if (!user || wordKeys.length === 0) {
+            setStudiedWords(new Set());
+            return;
+        }
+
         const { data } = await supabase
+            .from('user_word_state')
+            .select('word')
+            .eq('user_id', user.id)
+            .in('word', wordKeys);
+
+        setStudiedWords(new Set((data || []).map(s => normalizeWord(s.word))));
+    };
+
+    const loadWords = async (list, isBuiltIn) => {
+        setSelectedList(list.id);
+        setSelectedListSource(isBuiltIn ? 'builtin' : 'custom');
+        setSelectedListName(list.name);
+        setSelectedWordIds([]);
+        setSelectionError('');
+
+        const table = isBuiltIn ? 'built_in_words' : 'custom_words';
+        let query = supabase
             .from(table)
             .select('*')
-            .eq('wordlist_id', listId)
+            .eq('wordlist_id', list.id)
             .order('id');
-        setWords(data || []);
+
+        if (!isBuiltIn) {
+            query = query.eq('user_id', user.id);
+        }
+
+        const { data } = await query;
+        const listWords = data || [];
+        setWords(listWords);
+        await loadStudiedWords(listWords);
+    };
+
+    const clearSelectedList = () => {
+        setSelectedList(null);
+        setSelectedListSource(null);
+        setSelectedListName('');
+        setWords([]);
+        setStudiedWords(new Set());
+        setSelectedWordIds([]);
+        setSelectionError('');
+    };
+
+    const makeStudyUrl = (params) => {
+        const query = new URLSearchParams({ mode: 'new', ...params });
+        return `/study?${query.toString()}`;
+    };
+
+    const startListLearning = (source, listId) => {
+        navigate(makeStudyUrl({ source, listId }));
+    };
+
+    const startUnitLearning = (unit) => {
+        if (!selectedList || !selectedListSource) return;
+        navigate(makeStudyUrl({ source: selectedListSource, listId: selectedList, unit }));
+    };
+
+    const startSelectedLearning = () => {
+        if (selectedWordIds.length === 0) {
+            setSelectionError('请先选择要新学的单词');
+            return;
+        }
+
+        navigate(makeStudyUrl({
+            source: selectedListSource,
+            ids: selectedWordIds.join(','),
+        }));
+    };
+
+    const firstSelectableIdByWord = new Map();
+    for (const word of words) {
+        const key = normalizeWord(word.word);
+        if (!key || studiedWords.has(key) || firstSelectableIdByWord.has(key)) continue;
+        firstSelectableIdByWord.set(key, word.id);
+    }
+    const selectableWordIds = new Set(firstSelectableIdByWord.values());
+
+    const isWordStudied = (word) => studiedWords.has(normalizeWord(word.word));
+    const isWordSelectable = (word) => selectableWordIds.has(word.id);
+    const isWordSelected = (word) => selectedWordIds.includes(word.id);
+    const selectableCount = selectableWordIds.size;
+
+    const toggleWordSelection = (word) => {
+        if (!isWordSelectable(word)) return;
+
+        setSelectionError('');
+        if (isWordSelected(word)) {
+            setSelectedWordIds(ids => ids.filter(id => id !== word.id));
+            return;
+        }
+
+        if (selectedWordIds.length >= dailyNewLimit) {
+            setSelectionError(`最多选择 ${dailyNewLimit} 个新词，和“每日新学量”保持一致`);
+            return;
+        }
+
+        setSelectedWordIds(ids => [...ids, word.id]);
+    };
+
+    const getWordStatus = (word) => {
+        if (isWordStudied(word)) return '已学';
+        if (!isWordSelectable(word)) return '重复词';
+        return '';
     };
 
     // AI word generation
@@ -83,6 +206,7 @@ export default function WordlistPage() {
                 meaning_cn: result.meaning_cn || '',
                 phonetic: result.phonetic || '',
                 example: result.example || '',
+                usage_prompt_cn: result.usage_prompt_cn || '',
             });
         } catch (err) {
             setGenError(err.message);
@@ -92,6 +216,7 @@ export default function WordlistPage() {
                 meaning_cn: '',
                 phonetic: '',
                 example: '',
+                usage_prompt_cn: '',
             });
         }
         setGenerating(false);
@@ -127,16 +252,37 @@ export default function WordlistPage() {
                 loadWordlists();
             }
 
+            const wordText = generatedWord.word.trim();
+            const meaningText = generatedWord.meaning_cn.trim();
+            const exampleText = generatedWord.example.trim();
+            const usagePromptCn = generatedWord.usage_prompt_cn?.trim() || '';
+
             await supabase.from('custom_words').insert({
                 user_id: user.id,
                 wordlist_id: targetListId,
-                ...generatedWord,
+                word: wordText,
+                meaning_cn: meaningText,
+                phonetic: generatedWord.phonetic || '',
+                example: exampleText,
             });
+
+            if (usagePromptCn && exampleText) {
+                await supabase.from('user_usage_exercises').upsert({
+                    user_id: user.id,
+                    word: wordText.toLowerCase(),
+                    meaning_cn: meaningText,
+                    prompt_cn: usagePromptCn,
+                    reference_answer_en: exampleText,
+                    updated_at: new Date().toISOString(),
+                }, { onConflict: 'user_id,word,meaning_cn' });
+            }
 
             setShowAddWord(false);
             setAddWordInput('');
             setGeneratedWord(null);
-            if (selectedList === targetListId) loadWords(targetListId, false);
+            if (selectedList === targetListId) {
+                loadWords({ id: targetListId, name: selectedListName }, false);
+            }
         } catch (err) {
             setGenError(err.message);
         }
@@ -247,62 +393,119 @@ export default function WordlistPage() {
                 </div>
             </header>
 
-            {/* Tabs */}
             <div className="wordlist-tabs">
                 <button
                     className={`tab-btn ${activeTab === 'builtin' ? 'active' : ''}`}
-                    onClick={() => { setActiveTab('builtin'); setSelectedList(null); setWords([]); }}
+                    onClick={() => { setActiveTab('builtin'); clearSelectedList(); }}
                 >
                     内置词表
                 </button>
                 <button
                     className={`tab-btn ${activeTab === 'custom' ? 'active' : ''}`}
-                    onClick={() => { setActiveTab('custom'); setSelectedList(null); setWords([]); }}
+                    onClick={() => { setActiveTab('custom'); clearSelectedList(); }}
                 >
                     自定义词表
                 </button>
             </div>
 
-            {/* Content */}
             <div className="wordlist-content">
                 {loading ? (
                     <div className="wordlist-loading"><div className="loading-spinner"></div></div>
                 ) : selectedList ? (
-                    // Word list view
                     <div className="words-view">
-                        <button className="btn-back" onClick={() => { setSelectedList(null); setWords([]); }}>
-                            ← 返回词表列表
-                        </button>
+                        <div className="words-toolbar">
+                            <button className="btn-back" onClick={clearSelectedList}>
+                                ← 返回词表列表
+                            </button>
+                            <button
+                                className="btn-learn-list"
+                                onClick={() => startListLearning(selectedListSource, selectedList)}
+                            >
+                                学本词表
+                            </button>
+                        </div>
+
+                        <div className="selection-panel">
+                            <div>
+                                <strong>{selectedListName}</strong>
+                                <span>可选 {selectableCount} 词，已选 {selectedWordIds.length} / {dailyNewLimit}</span>
+                            </div>
+                            <button
+                                className="btn-selected-learn"
+                                onClick={startSelectedLearning}
+                                disabled={selectedWordIds.length === 0}
+                            >
+                                学习所选
+                            </button>
+                        </div>
+                        {selectionError && <div className="selection-error">{selectionError}</div>}
+
                         {Object.entries(wordsByUnit).map(([unit, unitWords]) => (
                             <div key={unit} className="unit-section">
-                                <h3 className="unit-title">{unit}</h3>
+                                <div className="unit-title-row">
+                                    <h3 className="unit-title">{unit}</h3>
+                                    <button className="btn-unit-learn" onClick={() => startUnitLearning(unit)}>
+                                        学本单元
+                                    </button>
+                                </div>
                                 <div className="word-list">
-                                    {unitWords.map((w, i) => (
-                                        <div key={w.id || i} className="word-item">
-                                            <div className="word-item-en">{w.word}</div>
-                                            <div className="word-item-cn">{w.meaning_cn}</div>
-                                        </div>
-                                    ))}
+                                    {unitWords.map((w, i) => {
+                                        const selected = isWordSelected(w);
+                                        const selectable = isWordSelectable(w);
+                                        const status = getWordStatus(w);
+
+                                        return (
+                                            <div
+                                                key={w.id || i}
+                                                className={`word-item ${selected ? 'selected' : ''} ${!selectable ? 'disabled' : ''}`}
+                                                onClick={() => toggleWordSelection(w)}
+                                            >
+                                                <label className="word-select" onClick={e => e.stopPropagation()}>
+                                                    <input
+                                                        type="checkbox"
+                                                        checked={selected}
+                                                        disabled={!selectable}
+                                                        onChange={() => toggleWordSelection(w)}
+                                                    />
+                                                </label>
+                                                <div className="word-item-main">
+                                                    <div className="word-item-en">{w.word}</div>
+                                                    <div className="word-item-cn">{w.meaning_cn}</div>
+                                                </div>
+                                                {status && <div className="word-status">{status}</div>}
+                                            </div>
+                                        );
+                                    })}
                                 </div>
                             </div>
                         ))}
                     </div>
                 ) : (
-                    // Wordlist list view
                     <div className="list-view">
                         {activeTab === 'builtin' ? (
                             wordlists.map(list => (
                                 <div
                                     key={list.id}
                                     className="list-card"
-                                    onClick={() => loadWords(list.id, true)}
+                                    onClick={() => loadWords(list, true)}
                                 >
                                     <div className="list-card-icon">📚</div>
                                     <div className="list-card-info">
                                         <div className="list-card-name">{list.name}</div>
                                         {list.description && <div className="list-card-desc">{list.description}</div>}
                                     </div>
-                                    <div className="list-card-arrow">→</div>
+                                    <div className="list-card-actions">
+                                        <button
+                                            className="btn-list-learn"
+                                            onClick={(e) => {
+                                                e.stopPropagation();
+                                                startListLearning('builtin', list.id);
+                                            }}
+                                        >
+                                            新学
+                                        </button>
+                                        <div className="list-card-arrow">→</div>
+                                    </div>
                                 </div>
                             ))
                         ) : (
@@ -320,13 +523,24 @@ export default function WordlistPage() {
                                         <div
                                             key={list.id}
                                             className="list-card"
-                                            onClick={() => loadWords(list.id, false)}
+                                            onClick={() => loadWords(list, false)}
                                         >
                                             <div className="list-card-icon">📝</div>
                                             <div className="list-card-info">
                                                 <div className="list-card-name">{list.name}</div>
                                             </div>
-                                            <div className="list-card-arrow">→</div>
+                                            <div className="list-card-actions">
+                                                <button
+                                                    className="btn-list-learn"
+                                                    onClick={(e) => {
+                                                        e.stopPropagation();
+                                                        startListLearning('custom', list.id);
+                                                    }}
+                                                >
+                                                    新学
+                                                </button>
+                                                <div className="list-card-arrow">→</div>
+                                            </div>
                                         </div>
                                     ))
                                 )}
@@ -397,6 +611,14 @@ export default function WordlistPage() {
                                             type="text"
                                             value={generatedWord.example}
                                             onChange={e => setGeneratedWord({ ...generatedWord, example: e.target.value })}
+                                        />
+                                    </div>
+                                    <div className="gen-field">
+                                        <label>场景中文句</label>
+                                        <input
+                                            type="text"
+                                            value={generatedWord.usage_prompt_cn || ''}
+                                            onChange={e => setGeneratedWord({ ...generatedWord, usage_prompt_cn: e.target.value })}
                                         />
                                     </div>
                                     <button

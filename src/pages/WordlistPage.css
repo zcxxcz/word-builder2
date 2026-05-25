@@ -100,6 +100,7 @@
 
 .list-card-info {
     flex: 1;
+    min-width: 0;
 }
 
 .list-card-name {
@@ -117,6 +118,24 @@
 .list-card-arrow {
     color: var(--text-tertiary);
     font-size: 18px;
+}
+
+.list-card-actions {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-shrink: 0;
+}
+
+.btn-list-learn {
+    border: none;
+    border-radius: 10px;
+    background: var(--primary-alpha);
+    color: var(--primary);
+    font-size: 13px;
+    font-weight: 700;
+    padding: 8px 10px;
+    cursor: pointer;
 }
 
 .btn-create-list {
@@ -151,6 +170,14 @@
 }
 
 /* Word list view */
+.words-toolbar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    margin-bottom: 12px;
+}
+
 .btn-back {
     background: none;
     border: none;
@@ -159,11 +186,76 @@
     font-weight: 600;
     cursor: pointer;
     padding: 8px 0;
-    margin-bottom: 8px;
+}
+
+.btn-learn-list,
+.btn-selected-learn,
+.btn-unit-learn {
+    border: none;
+    border-radius: 10px;
+    background: var(--primary);
+    color: white;
+    font-size: 13px;
+    font-weight: 700;
+    padding: 10px 12px;
+    cursor: pointer;
+    white-space: nowrap;
+}
+
+.btn-selected-learn:disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
+}
+
+.selection-panel {
+    background: var(--surface);
+    border-radius: 14px;
+    padding: 14px;
+    margin-bottom: 10px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    box-shadow: var(--shadow-sm);
+}
+
+.selection-panel strong,
+.selection-panel span {
+    display: block;
+}
+
+.selection-panel strong {
+    color: var(--text-primary);
+    font-size: 15px;
+    margin-bottom: 3px;
+}
+
+.selection-panel span {
+    color: var(--text-secondary);
+    font-size: 12px;
+}
+
+.selection-error {
+    background: var(--error-bg);
+    color: var(--error);
+    border-radius: 10px;
+    padding: 10px 12px;
+    font-size: 13px;
+    margin-bottom: 12px;
 }
 
 .unit-section {
     margin-bottom: 20px;
+}
+
+.unit-title-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding-bottom: 8px;
+    border-bottom: 1px solid var(--border);
+    margin-bottom: 8px;
 }
 
 .unit-title {
@@ -171,10 +263,14 @@
     font-weight: 600;
     color: var(--text-secondary);
     text-transform: uppercase;
-    letter-spacing: 0.5px;
-    padding-bottom: 8px;
-    border-bottom: 1px solid var(--border);
-    margin-bottom: 8px;
+    letter-spacing: 0;
+    margin: 0;
+}
+
+.btn-unit-learn {
+    background: var(--surface-dim);
+    color: var(--primary);
+    padding: 8px 10px;
 }
 
 .word-list {
@@ -185,11 +281,47 @@
 
 .word-item {
     display: flex;
-    justify-content: space-between;
     align-items: center;
+    gap: 10px;
     padding: 12px 16px;
     background: var(--surface);
     border-radius: 10px;
+    cursor: pointer;
+    border: 1px solid transparent;
+}
+
+.word-item.selected {
+    border-color: var(--primary);
+    background: var(--primary-alpha);
+}
+
+.word-item.disabled {
+    cursor: default;
+    opacity: 0.68;
+}
+
+.word-select {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 24px;
+    flex-shrink: 0;
+}
+
+.word-select input {
+    width: 18px;
+    height: 18px;
+    accent-color: var(--primary);
+    cursor: pointer;
+}
+
+.word-select input:disabled {
+    cursor: not-allowed;
+}
+
+.word-item-main {
+    flex: 1;
+    min-width: 0;
 }
 
 .word-item-en {
@@ -201,8 +333,13 @@
 .word-item-cn {
     color: var(--text-secondary);
     font-size: 13px;
-    max-width: 50%;
-    text-align: right;
+    margin-top: 2px;
+}
+
+.word-status {
+    font-size: 12px;
+    color: var(--text-tertiary);
+    white-space: nowrap;
 }
 
 /* Modal */
@@ -329,7 +466,7 @@
     font-weight: 600;
     color: var(--text-secondary);
     text-transform: uppercase;
-    letter-spacing: 0.5px;
+    letter-spacing: 0;
 }
 
 .gen-field input {

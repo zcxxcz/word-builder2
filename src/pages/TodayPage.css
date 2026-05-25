@@ -89,6 +89,9 @@
 
 .today-actions {
     margin-bottom: 24px;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
 }
 
 .btn-start {
@@ -126,6 +129,16 @@
     font-size: 13px;
     font-weight: 400;
     opacity: 0.8;
+}
+
+.btn-start-new {
+    background: var(--surface);
+    color: var(--text-primary);
+    box-shadow: var(--shadow-sm);
+}
+
+.btn-start-new:hover {
+    box-shadow: var(--shadow-md);
 }
 
 .today-complete {

@@ -204,19 +204,22 @@ score 为 0-1 的数字；passed 只有在 score >= 0.7 且目标词用法正确
 {
   "meaning_cn": "中文释义（每条≤12个汉字，最多3条义项，用;分隔，避免生僻和学术表达）",
   "phonetic": "国际音标（IPA格式，如 /ˈæp.əl/）",
-  "example": "1-2个例句（句长6-12个词，不使用复杂从句，必须包含目标词原形）"
+  "example": "1个英文例句（句长6-12个词，不使用复杂从句，必须包含目标词原形）",
+  "usage_prompt_cn": "上面英文例句对应的中文翻译，不出现英文目标词，适合作为请翻译题"
 }
 
 注意：
 - 中文释义要简短、常用、适合初中生
 - 例句要贴近初中生日常生活
+- usage_prompt_cn 必须和 example 语义一致
 - 只输出JSON，不要其他内容`;
 
-            const content = await callDeepSeek(deepseekKey, prompt);
+            const content = await callDeepSeek(deepseekKey, prompt, 520);
             parsed = extractJson(content, {
                 meaning_cn: '未找到释义',
                 phonetic: '',
                 example: '',
+                usage_prompt_cn: '',
             });
         }
 
