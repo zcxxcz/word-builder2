@@ -153,6 +153,11 @@
     background: var(--primary-alpha);
 }
 
+.setting-link {
+    text-decoration: none;
+    box-sizing: border-box;
+}
+
 .setting-btn.danger {
     color: var(--error);
     border-color: var(--error);

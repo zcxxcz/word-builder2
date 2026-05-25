@@ -3,6 +3,7 @@ import { useAuthStore } from '../stores/authStore';
 import { useSettingsStore } from '../stores/settingsStore';
 import { supabase } from '../lib/supabase';
 import { REVIEW_BATCH_LIMIT } from '../utils/constants';
+import { getToday } from '../utils/srs';
 import './SettingsPage.css';
 
 export default function SettingsPage() {
@@ -65,7 +66,7 @@ export default function SettingsPage() {
         const url = URL.createObjectURL(blob);
         const a = document.createElement('a');
         a.href = url;
-        a.download = `word-builder-backup-${new Date().toISOString().split('T')[0]}.json`;
+        a.download = `word-builder-backup-${getToday()}.json`;
         a.click();
         URL.revokeObjectURL(url);
     };
@@ -158,6 +159,7 @@ export default function SettingsPage() {
 
         await supabase.from('user_word_state').delete().eq('user_id', user.id);
         await supabase.from('sessions').delete().eq('user_id', user.id);
+        await supabase.from('active_study_sessions').delete().eq('user_id', user.id);
         await supabase.from('user_usage_exercises').delete().eq('user_id', user.id);
         await supabase.from('custom_words').delete().eq('user_id', user.id);
         await supabase.from('custom_wordlists').delete().eq('user_id', user.id);
@@ -260,6 +262,14 @@ export default function SettingsPage() {
                         className="setting-slider"
                     />
                 </div>
+            </div>
+
+            {/* Help */}
+            <div className="settings-section">
+                <h2>帮助</h2>
+                <a className="setting-btn setting-link" href={`${import.meta.env.BASE_URL}user-manual.html`}>
+                    📖 使用手册
+                </a>
             </div>
 
             {/* Data management */}

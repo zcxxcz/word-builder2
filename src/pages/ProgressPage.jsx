@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useAuthStore } from '../stores/authStore';
 import { supabase } from '../lib/supabase';
+import { formatStudyDateForDisplay, getStudyDateDaysAgo } from '../utils/srs';
 import './ProgressPage.css';
 
 export default function ProgressPage() {
@@ -29,13 +30,12 @@ export default function ProgressPage() {
             });
 
             // This week sessions
-            const weekAgo = new Date();
-            weekAgo.setDate(weekAgo.getDate() - 7);
+            const weekAgo = getStudyDateDaysAgo(7);
             const { data: weekSessions } = await supabase
                 .from('sessions')
                 .select('*')
                 .eq('user_id', user.id)
-                .gte('date', weekAgo.toISOString().split('T')[0])
+                .gte('date', weekAgo)
                 .order('date', { ascending: false });
 
             const studyDays = new Set((weekSessions || []).map(s => s.date)).size;
@@ -127,7 +127,7 @@ export default function ProgressPage() {
                         {sessions.map(s => (
                             <div key={s.id} className="session-item">
                                 <div className="session-date">
-                                    {new Date(s.date).toLocaleDateString('zh-CN', { month: 'short', day: 'numeric' })}
+                                    {formatStudyDateForDisplay(s.date)}
                                 </div>
                                 <div className="session-info">
                                     <span>新学 {s.new_count} · 复习 {s.review_count}</span>

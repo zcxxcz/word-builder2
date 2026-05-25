@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { useAuthStore } from '../stores/authStore';
 import { useSettingsStore } from '../stores/settingsStore';
 import { getTaskCounts } from '../utils/taskEngine';
+import { getToday, STUDY_TIME_ZONE } from '../utils/srs';
 import { supabase } from '../lib/supabase';
 import './TodayPage.css';
 
@@ -14,6 +15,7 @@ export default function TodayPage() {
     const [counts, setCounts] = useState(null);
     const [loading, setLoading] = useState(true);
     const [todaySession, setTodaySession] = useState(null);
+    const [activeSession, setActiveSession] = useState(null);
 
     useEffect(() => {
         if (user && !loaded) {
@@ -25,6 +27,7 @@ export default function TodayPage() {
         if (user && loaded) {
             loadCounts();
             loadTodaySession();
+            loadActiveSession();
         }
     }, [user, loaded]);
 
@@ -40,7 +43,7 @@ export default function TodayPage() {
     };
 
     const loadTodaySession = async () => {
-        const today = new Date().toISOString().split('T')[0];
+        const today = getToday();
         const { data } = await supabase
             .from('sessions')
             .select('*')
@@ -48,8 +51,18 @@ export default function TodayPage() {
             .eq('date', today)
             .order('created_at', { ascending: false })
             .limit(1)
-            .single();
+            .maybeSingle();
         setTodaySession(data);
+    };
+
+    const loadActiveSession = async () => {
+        const { data } = await supabase
+            .from('active_study_sessions')
+            .select('updated_at, session_type')
+            .eq('user_id', user.id)
+            .eq('status', 'active')
+            .maybeSingle();
+        setActiveSession(data);
     };
 
     const startReview = () => {
@@ -58,6 +71,10 @@ export default function TodayPage() {
 
     const chooseNewWords = () => {
         navigate('/wordlist');
+    };
+
+    const continueStudy = () => {
+        navigate('/study');
     };
 
     const estimatedMinutes = counts
@@ -69,7 +86,12 @@ export default function TodayPage() {
             <header className="today-header">
                 <h1>今日学习</h1>
                 <p className="today-date">
-                    {new Date().toLocaleDateString('zh-CN', { month: 'long', day: 'numeric', weekday: 'long' })}
+                    {new Date().toLocaleDateString('zh-CN', {
+                        timeZone: STUDY_TIME_ZONE,
+                        month: 'long',
+                        day: 'numeric',
+                        weekday: 'long',
+                    })}
                 </p>
             </header>
 
@@ -97,8 +119,15 @@ export default function TodayPage() {
                         </div>
                     </div>
 
-                    {(counts?.reviewCount > 0 || counts?.newCount > 0) ? (
+                    {(activeSession || counts?.reviewCount > 0 || counts?.newCount > 0) ? (
                         <div className="today-actions">
+                            {activeSession && (
+                                <button className="btn-start btn-start-new" onClick={continueStudy}>
+                                    <span className="btn-start-icon">▶</span>
+                                    <span>继续未完成学习</span>
+                                    <span className="btn-start-count">恢复上次进度</span>
+                                </button>
+                            )}
                             {counts?.reviewCount > 0 && (
                                 <button className="btn-start btn-start-review" onClick={startReview}>
                                     <span className="btn-start-icon">🔄</span>

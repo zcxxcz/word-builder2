@@ -44,11 +44,20 @@ export default function StudyPage() {
             if (study.isActive && study.currentWord) {
                 if (!study.sessionUserId || study.sessionUserId === user.id) {
                     study.setSessionSettings(study.sessionSettings || settings);
+                    void study.saveActiveSession();
                     setLoading(false);
                     return;
                 }
 
                 study.resetSession();
+            }
+
+            const restored = await study.loadActiveSession(user.id);
+            if (restored) {
+                const restoredStudy = useStudyStore.getState();
+                restoredStudy.setSessionSettings(restoredStudy.sessionSettings || settings);
+                setLoading(false);
+                return;
             }
 
             const mode = searchParams.get('mode');

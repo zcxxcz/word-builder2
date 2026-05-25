@@ -2,7 +2,7 @@ import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import { supabase } from '../lib/supabase';
 import { PHASE, STEP } from '../utils/constants';
-import { calculateLevelUpdate, getNextReviewDate, getToday, shuffle } from '../utils/srs';
+import { calculateLevelUpdate, getToday, shuffle } from '../utils/srs';
 
 const FULL_REVIEW_STEPS = [STEP.RECALL, STEP.SPELLING, STEP.USAGE];
 
@@ -92,6 +92,78 @@ const emptySessionResults = {
     wordErrors: {},
 };
 
+const SESSION_SNAPSHOT_VERSION = 1;
+
+const SESSION_SNAPSHOT_KEYS = [
+    'phase',
+    'step',
+    'currentWord',
+    'queue',
+    'reviewWords',
+    'newWords',
+    'relapseWords',
+    'stepAQueue',
+    'stepBQueue',
+    'stepCQueue',
+    'sessionResults',
+    'wordPhaseResults',
+    'isActive',
+    'sessionUserId',
+    'sessionType',
+    'showAnswer',
+    'spellingResult',
+    'correctSpelling',
+    'needsCorrection',
+    'correctionDone',
+    'sessionSettings',
+];
+
+function buildSessionSnapshot(state) {
+    const snapshot = {
+        version: SESSION_SNAPSHOT_VERSION,
+        saved_at: new Date().toISOString(),
+    };
+
+    for (const key of SESSION_SNAPSHOT_KEYS) {
+        snapshot[key] = state[key];
+    }
+
+    return snapshot;
+}
+
+function normalizeSessionSnapshot(snapshot, userId) {
+    if (!snapshot || !snapshot.isActive || !snapshot.currentWord) return null;
+
+    return {
+        phase: snapshot.phase,
+        step: snapshot.step,
+        currentWord: snapshot.currentWord,
+        queue: snapshot.queue || [],
+        reviewWords: snapshot.reviewWords || [],
+        newWords: snapshot.newWords || [],
+        relapseWords: snapshot.relapseWords || [],
+        stepAQueue: snapshot.stepAQueue || [],
+        stepBQueue: snapshot.stepBQueue || [],
+        stepCQueue: snapshot.stepCQueue || [],
+        sessionResults: {
+            ...emptySessionResults,
+            ...(snapshot.sessionResults || {}),
+        },
+        wordPhaseResults: snapshot.wordPhaseResults || {},
+        isActive: true,
+        sessionUserId: userId,
+        sessionType: snapshot.sessionType || 'all',
+        showAnswer: Boolean(snapshot.showAnswer),
+        spellingResult: snapshot.spellingResult || null,
+        correctSpelling: snapshot.correctSpelling || '',
+        needsCorrection: Boolean(snapshot.needsCorrection),
+        correctionDone: Boolean(snapshot.correctionDone),
+        sessionSettings: snapshot.sessionSettings || undefined,
+        isFinishingPhase: false,
+        isCompletingSession: false,
+    };
+}
+
 export const useStudyStore = create(persist((set, get) => ({
     // Queue state
     phase: null,           // current phase: review, new_learn, new_review, relapse, complete
@@ -137,6 +209,60 @@ export const useStudyStore = create(persist((set, get) => ({
     correctSpelling: '',
     needsCorrection: false,
     correctionDone: false,
+    isFinishingPhase: false,
+    isCompletingSession: false,
+
+    saveActiveSession: async () => {
+        const state = get();
+        if (!state.isActive || !state.sessionUserId || !state.currentWord || state.phase === PHASE.COMPLETE) {
+            return;
+        }
+
+        const { error } = await supabase.from('active_study_sessions').upsert({
+            user_id: state.sessionUserId,
+            status: 'active',
+            session_type: state.sessionType || 'all',
+            snapshot: buildSessionSnapshot(state),
+            updated_at: new Date().toISOString(),
+        }, { onConflict: 'user_id' });
+
+        if (error) {
+            console.error('Failed to save active study session:', error);
+        }
+    },
+
+    loadActiveSession: async (userId) => {
+        const { data, error } = await supabase
+            .from('active_study_sessions')
+            .select('snapshot')
+            .eq('user_id', userId)
+            .eq('status', 'active')
+            .maybeSingle();
+
+        if (error) {
+            console.error('Failed to load active study session:', error);
+            return false;
+        }
+
+        const snapshot = normalizeSessionSnapshot(data?.snapshot, userId);
+        if (!snapshot) return false;
+
+        set(snapshot);
+        return true;
+    },
+
+    clearActiveSession: async (userId) => {
+        if (!userId) return;
+
+        const { error } = await supabase
+            .from('active_study_sessions')
+            .delete()
+            .eq('user_id', userId);
+
+        if (error) {
+            console.error('Failed to clear active study session:', error);
+        }
+    },
 
     /**
      * Initialize a study session with pre-generated queues
@@ -164,6 +290,8 @@ export const useStudyStore = create(persist((set, get) => ({
                 wordErrors: {},
             },
             wordPhaseResults: {},
+            isFinishingPhase: false,
+            isCompletingSession: false,
         });
 
         // Start with review phase if there are review words
@@ -206,6 +334,7 @@ export const useStudyStore = create(persist((set, get) => ({
                 spellingResult: null,
                 needsCorrection: false,
                 correctionDone: false,
+                isFinishingPhase: false,
             });
         } else {
             // Review/new_review/relapse: all Step A, then B, then usage application.
@@ -249,8 +378,11 @@ export const useStudyStore = create(persist((set, get) => ({
                 spellingResult: null,
                 needsCorrection: false,
                 correctionDone: false,
+                isFinishingPhase: false,
             });
         }
+
+        void get().saveActiveSession();
     },
 
     /**
@@ -258,6 +390,7 @@ export const useStudyStore = create(persist((set, get) => ({
      */
     revealAnswer: () => {
         set({ showAnswer: true });
+        void get().saveActiveSession();
         console.log('show_answer');
     },
 
@@ -265,7 +398,9 @@ export const useStudyStore = create(persist((set, get) => ({
      * Submit self-evaluation for recall step
      */
     submitRecall: (know) => {
-        const { currentWord, sessionResults, wordPhaseResults } = get();
+        const { currentWord, sessionResults, wordPhaseResults, isFinishingPhase, isCompletingSession } = get();
+        if (!currentWord || isFinishingPhase || isCompletingSession) return;
+
         const wordKey = currentWord.word.toLowerCase();
 
         const newResults = { ...sessionResults };
@@ -294,7 +429,9 @@ export const useStudyStore = create(persist((set, get) => ({
      * Submit spelling attempt
      */
     submitSpelling: (input) => {
-        const { currentWord, sessionResults, wordPhaseResults, needsCorrection } = get();
+        const { currentWord, sessionResults, wordPhaseResults, needsCorrection, isFinishingPhase, isCompletingSession } = get();
+        if (!currentWord || isFinishingPhase || isCompletingSession) return;
+
         const wordKey = currentWord.word.toLowerCase();
         const isCorrect = input.trim().toLowerCase() === currentWord.word.toLowerCase();
 
@@ -305,6 +442,7 @@ export const useStudyStore = create(persist((set, get) => ({
             } else {
                 set({ spellingResult: 'incorrect' });
             }
+            void get().saveActiveSession();
             return;
         }
 
@@ -324,6 +462,7 @@ export const useStudyStore = create(persist((set, get) => ({
             set({ wordPhaseResults: newWordResults });
 
             console.log('spelling_submit', { correct: true });
+            void get().saveActiveSession();
         } else {
             set({
                 spellingResult: 'incorrect',
@@ -347,6 +486,7 @@ export const useStudyStore = create(persist((set, get) => ({
             set({ sessionResults: newResults });
 
             console.log('spelling_submit', { correct: false });
+            void get().saveActiveSession();
         }
     },
 
@@ -361,7 +501,9 @@ export const useStudyStore = create(persist((set, get) => ({
      * Submit AI-graded usage application result.
      */
     submitUsage: (passed) => {
-        const { currentWord, sessionResults, wordPhaseResults } = get();
+        const { currentWord, sessionResults, wordPhaseResults, isFinishingPhase, isCompletingSession } = get();
+        if (!currentWord || isFinishingPhase || isCompletingSession) return;
+
         const wordKey = currentWord.word.toLowerCase();
         const newResults = { ...sessionResults };
 
@@ -397,7 +539,9 @@ export const useStudyStore = create(persist((set, get) => ({
      * Skip usage application when AI generation/grading is unavailable.
      */
     skipUsage: () => {
-        const { currentWord, sessionResults, wordPhaseResults } = get();
+        const { currentWord, sessionResults, wordPhaseResults, isFinishingPhase, isCompletingSession } = get();
+        if (!currentWord || isFinishingPhase || isCompletingSession) return;
+
         const wordKey = currentWord.word.toLowerCase();
 
         const newWordResults = { ...wordPhaseResults };
@@ -428,11 +572,12 @@ export const useStudyStore = create(persist((set, get) => ({
      * Advance to next word in queue
      */
     advanceWord: () => {
-        const { queue } = get();
+        const { queue, isFinishingPhase, isCompletingSession } = get();
+        if (isFinishingPhase || isCompletingSession) return;
 
         if (queue.length === 0) {
             // Current phase sub-queue exhausted, try to update levels and advance phase
-            get().finishCurrentPhase();
+            void get().finishCurrentPhase();
             return;
         }
 
@@ -446,60 +591,69 @@ export const useStudyStore = create(persist((set, get) => ({
             needsCorrection: false,
             correctionDone: false,
         });
+        void get().saveActiveSession();
     },
 
     /**
      * Finish current phase: update word levels and move to next phase
      */
     finishCurrentPhase: async () => {
-        const { phase, wordPhaseResults, sessionResults } = get();
+        const { phase, wordPhaseResults, sessionResults, isFinishingPhase, isCompletingSession } = get();
+        if (isFinishingPhase || isCompletingSession) return;
 
-        // Update levels for words that were reviewed (A, B, and usage completed).
-        if (phase !== PHASE.NEW_LEARN) {
-            const userId = (await supabase.auth.getUser()).data.user?.id;
-            if (userId) {
-                let levelUps = sessionResults.levelUps;
+        set({ isFinishingPhase: true });
 
-                for (const [wordKey, results] of Object.entries(wordPhaseResults)) {
-                    if (
-                        results.recallPassed !== undefined &&
-                        results.spellingPassed !== undefined &&
-                        results.usagePassed !== undefined
-                    ) {
-                        // All three steps completed, update level.
-                        const { data: existing } = await supabase
-                            .from('user_word_state')
-                            .select('*')
-                            .eq('user_id', userId)
-                            .eq('word', wordKey)
-                            .single();
+        try {
+            // Update levels for words that were reviewed (A, B, and usage completed).
+            if (phase !== PHASE.NEW_LEARN) {
+                const userId = (await supabase.auth.getUser()).data.user?.id;
+                if (userId) {
+                    let levelUps = sessionResults.levelUps;
 
-                        const currentState = existing || { level: 0, wrong_count: 0, correct_streak: 0 };
-                        const updates = calculateLevelUpdate(
-                            currentState,
-                            results.recallPassed,
-                            results.spellingPassed,
-                            results.usagePassed
-                        );
+                    for (const [wordKey, results] of Object.entries(wordPhaseResults)) {
+                        if (
+                            results.recallPassed !== undefined &&
+                            results.spellingPassed !== undefined &&
+                            results.usagePassed !== undefined
+                        ) {
+                            // All three steps completed, update level.
+                            const { data: existing } = await supabase
+                                .from('user_word_state')
+                                .select('*')
+                                .eq('user_id', userId)
+                                .eq('word', wordKey)
+                                .maybeSingle();
 
-                        if (updates.level > currentState.level) {
-                            levelUps++;
+                            const currentState = existing || { level: 0, wrong_count: 0, correct_streak: 0 };
+                            const updates = calculateLevelUpdate(
+                                currentState,
+                                results.recallPassed,
+                                results.spellingPassed,
+                                results.usagePassed
+                            );
+
+                            if (updates.level > currentState.level) {
+                                levelUps++;
+                            }
+
+                            await supabase.from('user_word_state').upsert({
+                                user_id: userId,
+                                word: wordKey,
+                                ...updates,
+                                updated_at: new Date().toISOString(),
+                            }, { onConflict: 'user_id,word' });
                         }
-
-                        await supabase.from('user_word_state').upsert({
-                            user_id: userId,
-                            word: wordKey,
-                            ...updates,
-                            updated_at: new Date().toISOString(),
-                        }, { onConflict: 'user_id,word' });
                     }
+
+                    set({ sessionResults: { ...sessionResults, levelUps } });
                 }
-
-                set({ sessionResults: { ...sessionResults, levelUps } });
             }
-        }
 
-        get().advancePhase();
+            get().advancePhase();
+        } catch (err) {
+            console.error('Failed to finish study phase:', err);
+            set({ isFinishingPhase: false });
+        }
     },
 
     /**
@@ -528,15 +682,12 @@ export const useStudyStore = create(persist((set, get) => ({
                 get().completeSession();
             }
         } else if (phase === PHASE.NEW_LEARN) {
-            // After new learning, create initial word states
-            get().createInitialWordStates().then(() => {
-                // Auto-review new words
-                if (newWords.length > 0) {
-                    get().startPhase(PHASE.NEW_REVIEW, newWords);
-                } else {
-                    get().advancePhase();
-                }
-            });
+            // Auto-review new words before they are committed to long-term progress.
+            if (newWords.length > 0) {
+                get().startPhase(PHASE.NEW_REVIEW, newWords);
+            } else {
+                get().advancePhase();
+            }
         } else if (phase === PHASE.NEW_REVIEW) {
             if (effectiveRelapseWords.length > 0) {
                 const { relapse_cap = 10 } = settings;
@@ -552,44 +703,17 @@ export const useStudyStore = create(persist((set, get) => ({
     },
 
     /**
-     * Create initial word states for newly learned words (L0)
-     */
-    createInitialWordStates: async () => {
-        const { newWords } = get();
-        const userId = (await supabase.auth.getUser()).data.user?.id;
-        if (!userId || newWords.length === 0) return;
-
-        for (const word of newWords) {
-            const wordKey = word.word.toLowerCase();
-            const { data: existing } = await supabase
-                .from('user_word_state')
-                .select('id')
-                .eq('user_id', userId)
-                .eq('word', wordKey)
-                .single();
-
-            if (!existing) {
-                await supabase.from('user_word_state').insert({
-                    user_id: userId,
-                    word: wordKey,
-                    level: 0,
-                    next_review_at: getNextReviewDate(0),
-                    last_seen_at: new Date().toISOString(),
-                    wrong_count: 0,
-                    correct_streak: 0,
-                });
-            }
-        }
-    },
-
-    /**
      * Complete the session and save record
      */
     completeSession: async () => {
-        const { sessionResults, sessionType } = get();
+        const { sessionResults, sessionType, isCompletingSession } = get();
+        if (isCompletingSession) return;
+
+        set({ isCompletingSession: true });
+
         const userId = (await supabase.auth.getUser()).data.user?.id;
 
-        const duration = Math.round((Date.now() - sessionResults.startTime) / 1000);
+        const duration = Math.max(0, Math.round((Date.now() - (sessionResults.startTime || Date.now())) / 1000));
         const accuracy = sessionResults.spellingTotal > 0
             ? sessionResults.spellingCorrect / sessionResults.spellingTotal
             : 1;
@@ -625,17 +749,27 @@ export const useStudyStore = create(persist((set, get) => ({
             level_ups: sessionResults.levelUps,
         };
 
-        if (userId) {
-            await supabase.from('sessions').insert(sessionRecord);
+        try {
+            if (userId) {
+                await supabase.from('sessions').insert(sessionRecord);
+                await get().clearActiveSession(userId);
+            }
+
+            set({
+                phase: PHASE.COMPLETE,
+                isActive: false,
+                sessionUserId: null,
+                currentWord: null,
+                queue: [],
+                isFinishingPhase: false,
+                isCompletingSession: false,
+            });
+
+            console.log('session_complete', sessionRecord);
+        } catch (err) {
+            console.error('Failed to complete study session:', err);
+            set({ isCompletingSession: false });
         }
-
-        set({
-            phase: PHASE.COMPLETE,
-            isActive: false,
-            sessionUserId: null,
-        });
-
-        console.log('session_complete', sessionRecord);
     },
 
     /**
@@ -643,12 +777,17 @@ export const useStudyStore = create(persist((set, get) => ({
      */
     setSessionSettings: (settings) => {
         set({ sessionSettings: settings });
+        if (get().isActive) {
+            void get().saveActiveSession();
+        }
     },
 
     /**
      * Reset session
      */
     resetSession: () => {
+        const userId = get().sessionUserId;
+
         set({
             phase: null,
             step: null,
@@ -683,7 +822,13 @@ export const useStudyStore = create(persist((set, get) => ({
             correctSpelling: '',
             needsCorrection: false,
             correctionDone: false,
+            isFinishingPhase: false,
+            isCompletingSession: false,
         });
+
+        if (userId) {
+            void get().clearActiveSession(userId);
+        }
     },
 
     /**

@@ -107,6 +107,17 @@ CREATE TABLE IF NOT EXISTS user_usage_exercises (
   UNIQUE(user_id, word, meaning_cn)
 );
 
+-- 9. Active Study Sessions (temporary cross-browser resume state)
+CREATE TABLE IF NOT EXISTS active_study_sessions (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id UUID REFERENCES auth.users(id) ON DELETE CASCADE NOT NULL UNIQUE,
+  status TEXT DEFAULT 'active',
+  session_type TEXT DEFAULT 'all',
+  snapshot JSONB NOT NULL DEFAULT '{}',
+  created_at TIMESTAMPTZ DEFAULT now(),
+  updated_at TIMESTAMPTZ DEFAULT now()
+);
+
 -- Existing projects can re-run this migration safely.
 ALTER TABLE user_settings ADD COLUMN IF NOT EXISTS daily_usage_gen_count INTEGER DEFAULT 0;
 ALTER TABLE user_settings ADD COLUMN IF NOT EXISTS last_usage_gen_date DATE;
@@ -141,6 +152,7 @@ ALTER TABLE user_word_state ENABLE ROW LEVEL SECURITY;
 ALTER TABLE sessions ENABLE ROW LEVEL SECURITY;
 ALTER TABLE user_settings ENABLE ROW LEVEL SECURITY;
 ALTER TABLE user_usage_exercises ENABLE ROW LEVEL SECURITY;
+ALTER TABLE active_study_sessions ENABLE ROW LEVEL SECURITY;
 
 -- custom_wordlists
 DROP POLICY IF EXISTS "Users can manage own custom_wordlists" ON custom_wordlists;
@@ -190,6 +202,14 @@ CREATE POLICY "Users can manage own user_usage_exercises"
   USING (auth.uid() = user_id)
   WITH CHECK (auth.uid() = user_id);
 
+-- active_study_sessions
+DROP POLICY IF EXISTS "Users can manage own active_study_sessions" ON active_study_sessions;
+CREATE POLICY "Users can manage own active_study_sessions"
+  ON active_study_sessions FOR ALL
+  TO authenticated
+  USING (auth.uid() = user_id)
+  WITH CHECK (auth.uid() = user_id);
+
 -- ============================================
 -- Indexes
 -- ============================================
@@ -210,6 +230,9 @@ CREATE INDEX IF NOT EXISTS idx_custom_words_wordlist
 
 CREATE INDEX IF NOT EXISTS idx_user_usage_exercises_word
   ON user_usage_exercises(user_id, word);
+
+CREATE INDEX IF NOT EXISTS idx_active_study_sessions_user
+  ON active_study_sessions(user_id);
 
 -- ============================================
 -- Insert built-in wordlists

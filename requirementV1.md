@@ -255,6 +255,7 @@ Step A/B 支持在电脑上按 **Enter** 进入下一步；Step C 支持 **Ctrl 
 #### 9.3.1 今日页（任务入口）
 - 展示：今日全部待复习数量、单次复习批次数量、可新学总数、预计时长
 - 入口：开始复习（到期复习 → 回流）
+- 如存在未完成学习会话，展示“继续未完成学习”入口，优先恢复云端保存的活跃会话
 - 新学入口：跳转到词表页选择新词，不在今日页直接混合开始
 - 今日完成后：展示战报摘要（新学/复习/正确率/升级数/最难词）
 - 底部展示已学词数 / 总词数
@@ -273,9 +274,10 @@ Step A/B 支持在电脑上按 **Enter** 进入下一步；Step C 支持 **Ctrl 
   - Step C 场景应用卡：
     - 目标词/短语 + 中文场景句
     - 输入完整英文句子 + AI 批改
-    - 展示反馈、参考答案，未通过进入当天回流
+    - 展示反馈、参考答案，未通过进入当天回流；暂时跳过视为本轮未完成，不升级也不降级
 - 错词回流：
   - 当天错的词加入回流队列，学习末尾出现（最多 relapse_cap）
+  - 回想或拼写失败的词回流时重做回想、拼写、场景应用；仅场景失败且前两项通过时只补场景应用
 - 完成战报：
   - 新学数、复习数、拼写正确率、升级词数、学习时长、最难词
 
@@ -321,9 +323,11 @@ Step A/B 支持在电脑上按 **Enter** 进入下一步；Step C 支持 **Ctrl 
 | `user_usage_exercises` | 场景应用题缓存（用户级） | user_id, word, meaning_cn, prompt_cn, reference_answer_en |
 | `sessions` | 学习记录 | date, new_count, review_count, spelling_accuracy, level_ups, duration_seconds, hardest_word |
 | `user_settings` | 用户设置 | daily_new, review_cap, relapse_cap, tts_enabled, tts_rate, AI 计数字段 |
+| `active_study_sessions` | 未完成学习恢复点（用户级，临时数据） | user_id, status, session_type, snapshot |
 
 ### 10.2 导入导出
 - 导出 JSON：包含 user_word_state、sessions、custom_wordlists、custom_words、user_usage_exercises、user_settings
+- 未完成学习恢复点为临时数据，不纳入 JSON 导出
 - 导入 JSON：按表 upsert（word_state 按 user_id+word 合并，词表新建导入）
 
 ---
@@ -337,6 +341,7 @@ Step A/B 支持在电脑上按 **Enter** 进入下一步；Step C 支持 **Ctrl 
 - `user_settings`：用户只能读写自己的设置
 - `custom_wordlists`：用户只能管理自己的自定义词表
 - `custom_words`：用户只能管理自己的自定义词汇
+- `active_study_sessions`：用户只能读写自己的未完成学习恢复点
 
 内置词表（`built_in_wordlists`、`built_in_words`）对所有认证用户只读。
 
@@ -361,7 +366,7 @@ Step A/B 支持在电脑上按 **Enter** 进入下一步；Step C 支持 **Ctrl 
 - 卡片切换有淡入动画
 - 拼写正确/错误有色彩反馈
 - 学习完成有庆祝动画（🎉 弹入）
-- 学习中断可恢复：浏览器刷新、手机切换应用后，未完成的学习会话从本地恢复；主动退出或完成学习后清除恢复点。
+- 学习中断可恢复：浏览器刷新、手机切换应用、关闭浏览器或换浏览器登录同一账号后，未完成的学习会话从云端恢复；主动退出或完成学习后清除恢复点。
 
 ---
 
@@ -386,6 +391,7 @@ Step A/B 支持在电脑上按 **Enter** 进入下一步；Step C 支持 **Ctrl 
 9. 今日战报与进度页数据正确
 10. 多设备同步：同一账号在不同浏览器登录后数据一致
 11. 支持数据导出/导入（JSON）
+12. 我的页提供可打开的 HTML 使用手册
 12. 移动端体验良好，支持内网手机访问
 
 ---
