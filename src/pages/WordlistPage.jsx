@@ -2,8 +2,10 @@ import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuthStore } from '../stores/authStore';
 import { useSettingsStore } from '../stores/settingsStore';
+import { THEMES, useThemeStore } from '../stores/themeStore';
 import { supabase } from '../lib/supabase';
 import { generateWordContent } from '../lib/deepseek';
+import { FLORR_AREAS, getFlorrRarity, isFlorrWordlist } from '../utils/florrTheme';
 import './WordlistPage.css';
 
 const normalizeWord = (word) => (word || '').trim().toLowerCase();
@@ -11,7 +13,9 @@ const normalizeWord = (word) => (word || '').trim().toLowerCase();
 export default function WordlistPage() {
     const { user } = useAuthStore();
     const { settings, loadSettings, loaded } = useSettingsStore();
+    const { theme } = useThemeStore();
     const navigate = useNavigate();
+    const isFlorrTheme = theme === THEMES.FLORR;
 
     const [activeTab, setActiveTab] = useState('builtin');
     const [wordlists, setWordlists] = useState([]);
@@ -21,6 +25,7 @@ export default function WordlistPage() {
     const [selectedListName, setSelectedListName] = useState('');
     const [words, setWords] = useState([]);
     const [studiedWords, setStudiedWords] = useState(new Set());
+    const [wordLevels, setWordLevels] = useState(new Map());
     const [selectedWordIds, setSelectedWordIds] = useState([]);
     const [selectionError, setSelectionError] = useState('');
     const [loading, setLoading] = useState(true);
@@ -84,16 +89,18 @@ export default function WordlistPage() {
         const wordKeys = [...new Set(listWords.map(w => normalizeWord(w.word)).filter(Boolean))];
         if (!user || wordKeys.length === 0) {
             setStudiedWords(new Set());
+            setWordLevels(new Map());
             return;
         }
 
         const { data } = await supabase
             .from('user_word_state')
-            .select('word')
+            .select('word, level')
             .eq('user_id', user.id)
             .in('word', wordKeys);
 
         setStudiedWords(new Set((data || []).map(s => normalizeWord(s.word))));
+        setWordLevels(new Map((data || []).map(s => [normalizeWord(s.word), s.level || 0])));
     };
 
     const loadWords = async (list, isBuiltIn) => {
@@ -126,6 +133,7 @@ export default function WordlistPage() {
         setSelectedListName('');
         setWords([]);
         setStudiedWords(new Set());
+        setWordLevels(new Map());
         setSelectedWordIds([]);
         setSelectionError('');
     };
@@ -187,6 +195,14 @@ export default function WordlistPage() {
     };
 
     const getWordStatus = (word) => {
+        if (isFlorrTheme) {
+            if (isWordStudied(word)) {
+                return getFlorrRarity(wordLevels.get(normalizeWord(word.word))).label;
+            }
+            if (!isWordSelectable(word)) return '重复花瓣';
+            return '未收集';
+        }
+
         if (isWordStudied(word)) return '已学';
         if (!isWordSelectable(word)) return '重复词';
         return '';
@@ -378,6 +394,7 @@ export default function WordlistPage() {
         if (!wordsByUnit[unit]) wordsByUnit[unit] = [];
         wordsByUnit[unit].push(w);
     });
+    const isSelectedFlorrWordlist = isFlorrWordlist(selectedListName);
 
     return (
         <div className="wordlist-page">
@@ -421,7 +438,7 @@ export default function WordlistPage() {
                                 className="btn-learn-list"
                                 onClick={() => startListLearning(selectedListSource, selectedList)}
                             >
-                                学本词表
+                                {isFlorrTheme ? '探索词表' : '学本词表'}
                             </button>
                         </div>
 
@@ -440,12 +457,23 @@ export default function WordlistPage() {
                         </div>
                         {selectionError && <div className="selection-error">{selectionError}</div>}
 
-                        {Object.entries(wordsByUnit).map(([unit, unitWords]) => (
-                            <div key={unit} className="unit-section">
+                        {Object.entries(wordsByUnit).map(([unit, unitWords]) => {
+                            const area = FLORR_AREAS[unit];
+
+                            return (
+                            <div
+                                key={unit}
+                                className={`unit-section ${isFlorrTheme && isSelectedFlorrWordlist ? 'florr-area-section' : ''}`}
+                            >
                                 <div className="unit-title-row">
-                                    <h3 className="unit-title">{unit}</h3>
+                                    <div>
+                                        <h3 className="unit-title">{area?.label || unit}</h3>
+                                        {isFlorrTheme && isSelectedFlorrWordlist && area?.description && (
+                                            <div className="unit-subtitle">{area.description}</div>
+                                        )}
+                                    </div>
                                     <button className="btn-unit-learn" onClick={() => startUnitLearning(unit)}>
-                                        学本单元
+                                        {isFlorrTheme ? '探索本区域' : '学本单元'}
                                     </button>
                                 </div>
                                 <div className="word-list">
@@ -472,13 +500,20 @@ export default function WordlistPage() {
                                                     <div className="word-item-en">{w.word}</div>
                                                     <div className="word-item-cn">{w.meaning_cn}</div>
                                                 </div>
-                                                {status && <div className="word-status">{status}</div>}
+                                                {status && (
+                                                    <div
+                                                        className={`word-status ${isFlorrTheme ? `rarity-badge ${isWordStudied(w) ? getFlorrRarity(wordLevels.get(normalizeWord(w.word))).className : 'rarity-common'}` : ''}`}
+                                                    >
+                                                        {status}
+                                                    </div>
+                                                )}
                                             </div>
                                         );
                                     })}
                                 </div>
                             </div>
-                        ))}
+                            );
+                        })}
                     </div>
                 ) : (
                     <div className="list-view">
@@ -489,7 +524,15 @@ export default function WordlistPage() {
                                     className="list-card"
                                     onClick={() => loadWords(list, true)}
                                 >
-                                    <div className="list-card-icon">📚</div>
+                                    <div className="list-card-icon">
+                                        {isFlorrTheme && isFlorrWordlist(list.name) ? (
+                                            <img
+                                                className="list-card-logo"
+                                                src={`${import.meta.env.BASE_URL}florr-logo.png`}
+                                                alt=""
+                                            />
+                                        ) : '📚'}
+                                    </div>
                                     <div className="list-card-info">
                                         <div className="list-card-name">{list.name}</div>
                                         {list.description && <div className="list-card-desc">{list.description}</div>}
@@ -502,7 +545,7 @@ export default function WordlistPage() {
                                                 startListLearning('builtin', list.id);
                                             }}
                                         >
-                                            新学
+                                            {isFlorrTheme && isFlorrWordlist(list.name) ? '探索' : '新学'}
                                         </button>
                                         <div className="list-card-arrow">→</div>
                                     </div>

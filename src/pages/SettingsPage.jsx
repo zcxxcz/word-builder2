@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useAuthStore } from '../stores/authStore';
 import { useSettingsStore } from '../stores/settingsStore';
+import { THEMES, useThemeStore } from '../stores/themeStore';
 import { supabase } from '../lib/supabase';
 import { REVIEW_BATCH_LIMIT } from '../utils/constants';
 import { getToday } from '../utils/srs';
@@ -10,6 +11,7 @@ import './SettingsPage.css';
 export default function SettingsPage() {
     const { user, signOut } = useAuthStore();
     const { settings, updateSettings } = useSettingsStore();
+    const { theme, setTheme } = useThemeStore();
     const [showClearConfirm, setShowClearConfirm] = useState(false);
     const [clearStep, setClearStep] = useState(0);
     const [importMessage, setImportMessage] = useState('');
@@ -200,6 +202,27 @@ export default function SettingsPage() {
                         <div className="user-email">{user?.email}</div>
                         <div className="user-id-label">已登录</div>
                     </div>
+                </div>
+            </div>
+
+            {/* Appearance */}
+            <div className="settings-section">
+                <h2>界面主题</h2>
+                <div className="theme-segmented-control" role="group" aria-label="界面主题">
+                    <button
+                        type="button"
+                        className={`theme-option ${theme === THEMES.CLASSIC ? 'active' : ''}`}
+                        onClick={() => setTheme(THEMES.CLASSIC)}
+                    >
+                        经典
+                    </button>
+                    <button
+                        type="button"
+                        className={`theme-option ${theme === THEMES.FLORR ? 'active' : ''}`}
+                        onClick={() => setTheme(THEMES.FLORR)}
+                    >
+                        Florr
+                    </button>
                 </div>
             </div>
 

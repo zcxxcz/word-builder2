@@ -1,6 +1,7 @@
 import { useEffect } from 'react';
 import { HashRouter, Routes, Route } from 'react-router-dom';
 import { useAuthStore } from './stores/authStore';
+import { THEMES, useThemeStore } from './stores/themeStore';
 import ProtectedRoute from './components/Layout/ProtectedRoute';
 import TabBar from './components/Layout/TabBar';
 import LoginPage from './pages/LoginPage';
@@ -13,6 +14,8 @@ import AdminPage from './pages/AdminPage';
 
 export default function App() {
   const { initialize } = useAuthStore();
+  const { theme } = useThemeStore();
+  const themeClass = theme === THEMES.FLORR ? 'theme-florr' : 'theme-classic';
 
   useEffect(() => {
     initialize();
@@ -20,7 +23,7 @@ export default function App() {
 
   return (
     <HashRouter>
-      <div className="app">
+      <div className={`app ${themeClass}`}>
         <Routes>
           <Route path="/login" element={<LoginPage />} />
           <Route path="/" element={

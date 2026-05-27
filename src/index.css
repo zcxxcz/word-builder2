@@ -94,6 +94,72 @@ body {
   position: relative;
 }
 
+.theme-florr {
+  --primary: #65b84f;
+  --primary-light: #87d36b;
+  --primary-dark: #3c8f34;
+  --primary-alpha: rgba(101, 184, 79, 0.15);
+  --primary-gradient: linear-gradient(135deg, #72c653 0%, #43a046 100%);
+  --shadow-primary: 0 4px 16px rgba(67, 160, 70, 0.28);
+  --accent: #f6c85f;
+  --accent-gradient: linear-gradient(135deg, #f6c85f 0%, #f59f4c 100%);
+  --bg: #f5fbf2;
+  --bg-gradient: linear-gradient(160deg, #f2ffe9 0%, #f7fbf2 55%, #eef8ff 100%);
+  --surface-dim: #eaf4e4;
+  --surface-elevated: rgba(255, 255, 255, 0.92);
+}
+
+.theme-florr .today-page,
+.theme-florr .wordlist-page,
+.theme-florr .progress-page,
+.theme-florr .settings-page {
+  background:
+    radial-gradient(circle at 12% 6%, rgba(246, 200, 95, 0.18), transparent 28%),
+    radial-gradient(circle at 90% 0%, rgba(101, 184, 79, 0.18), transparent 24%);
+}
+
+.theme-florr .stat-card,
+.theme-florr .list-card,
+.theme-florr .selection-panel,
+.theme-florr .word-item,
+.theme-florr .progress-section,
+.theme-florr .summary-card,
+.theme-florr .settings-section,
+.theme-florr .today-report-card,
+.theme-florr .today-overview,
+.theme-florr .complete-stat,
+.theme-florr .complete-details {
+  border: 1px solid rgba(101, 184, 79, 0.16);
+}
+
+.rarity-badge {
+  border-radius: 999px;
+  padding: 4px 8px;
+  font-size: 11px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.rarity-common {
+  background: #edf0ed;
+  color: #5d6b5d;
+}
+
+.rarity-rare {
+  background: #dcefff;
+  color: #1f6fb2;
+}
+
+.rarity-epic {
+  background: #efe2ff;
+  color: #7b36c6;
+}
+
+.rarity-legendary {
+  background: #fff0c7;
+  color: #a86500;
+}
+
 /* ===== Shared Components ===== */
 .btn-primary {
   display: block;

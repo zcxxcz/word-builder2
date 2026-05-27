@@ -10,8 +10,9 @@
 - 学习页不提供选择题：先回想中文释义，再输入英文拼写；复习型阶段增加中文场景句英译，要求用到目标词。
 - 学习中切换应用、刷新页面、关闭浏览器或换浏览器登录同一账号后，可恢复未完成的学习会话。
 - 词表页支持内置词表、自定义词表、CSV 导入、新学选择，以及 AI 生成释义/音标/例句。
+- 支持经典主题和 Florr 前端主题；Florr 主题只改变展示，不改变学习流程、SRS 或数据结构。
 - 进度页展示已学词数、L3 掌握词数、本周学习天数、等级分布和最近学习记录。
-- 我的页支持学习设置、TTS 设置、使用手册、JSON 导入导出和清空个人数据。
+- 我的页支持主题切换、学习设置、TTS 设置、使用手册、JSON 导入导出和清空个人数据。
 - 管理员可通过隐藏路由 `#/admin` 查看只读后台，包括全站概览、用户钻取、错词 Top、AI 调用和未完成会话。
 
 ## 技术栈
@@ -54,7 +55,8 @@ supabase secrets set DEEPSEEK_API_KEY=<your-key>
 
 1. 在 Supabase SQL Editor 中执行 `supabase/migration.sql`，创建表、索引和 RLS 策略。
 2. 继续执行 `supabase/import_grade7a.sql` 和 `supabase/import_grade7b.sql`，导入七年级上/下册内置词表。
-3. 首个管理员登录一次后，在 Supabase SQL Editor 中把管理员邮箱加入白名单：
+3. 如需 Florr 主题扩展词表，继续执行 `supabase/import_florr_petals.sql`，导入可选的 `Florr 花瓣词表`。源 CSV 为 `florr_petals.csv`，区域通过现有 `unit` 字段表示。
+4. 首个管理员登录一次后，在 Supabase SQL Editor 中把管理员邮箱加入白名单：
 
 ```sql
 insert into public.admin_users(email)
@@ -62,7 +64,7 @@ values (lower('admin@example.com'))
 on conflict (email) do nothing;
 ```
 
-4. 部署 AI 代理函数：
+5. 部署 AI 代理函数：
 
 ```powershell
 supabase functions deploy deepseek-proxy
@@ -132,11 +134,12 @@ src/
   lib/                    # Supabase、DeepSeek 代理调用、TTS、轻量 analytics
   pages/                  # Login、Today、Study、Wordlist、Progress、Settings、Admin
   stores/                 # auth/settings/study Zustand stores
-  utils/                  # SRS、任务生成、常量
+  utils/                  # SRS、任务生成、常量、Florr 主题映射
 supabase/
   migration.sql
   import_grade7a.sql
   import_grade7b.sql
+  import_florr_petals.sql
   functions/deepseek-proxy/index.ts
 ```
 

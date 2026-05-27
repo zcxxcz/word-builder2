@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuthStore } from '../stores/authStore';
 import { useSettingsStore } from '../stores/settingsStore';
+import { THEMES, useThemeStore } from '../stores/themeStore';
 import { getTaskCounts } from '../utils/taskEngine';
 import { getToday, STUDY_TIME_ZONE } from '../utils/srs';
 import { supabase } from '../lib/supabase';
@@ -10,7 +11,9 @@ import './TodayPage.css';
 export default function TodayPage() {
     const { user } = useAuthStore();
     const { settings, loadSettings, loaded } = useSettingsStore();
+    const { theme } = useThemeStore();
     const navigate = useNavigate();
+    const isFlorrTheme = theme === THEMES.FLORR;
 
     const [counts, setCounts] = useState(null);
     const [loading, setLoading] = useState(true);
@@ -84,7 +87,14 @@ export default function TodayPage() {
     return (
         <div className="today-page">
             <header className="today-header">
-                <h1>今日学习</h1>
+                {isFlorrTheme && (
+                    <img
+                        className="florr-logo"
+                        src={`${import.meta.env.BASE_URL}florr-logo.png`}
+                        alt="florr.io"
+                    />
+                )}
+                <h1>{isFlorrTheme ? '今日探索' : '今日学习'}</h1>
                 <p className="today-date">
                     {new Date().toLocaleDateString('zh-CN', {
                         timeZone: STUDY_TIME_ZONE,
@@ -104,17 +114,17 @@ export default function TodayPage() {
                     <div className="today-stats">
                         <div className="stat-card stat-review">
                             <div className="stat-number">{counts?.reviewCount || 0}</div>
-                            <div className="stat-label">今日待复习</div>
+                            <div className="stat-label">{isFlorrTheme ? '待挑战' : '今日待复习'}</div>
                             <div className="stat-icon">🔄</div>
                         </div>
                         <div className="stat-card stat-new">
                             <div className="stat-number">{counts?.newCount || 0}</div>
-                            <div className="stat-label">可新学</div>
+                            <div className="stat-label">{isFlorrTheme ? '可收集' : '可新学'}</div>
                             <div className="stat-icon">✨</div>
                         </div>
                         <div className="stat-card stat-time">
                             <div className="stat-number">{estimatedMinutes}</div>
-                            <div className="stat-label">预计分钟</div>
+                            <div className="stat-label">{isFlorrTheme ? '探索时间' : '预计分钟'}</div>
                             <div className="stat-icon">⏱️</div>
                         </div>
                     </div>
@@ -124,14 +134,14 @@ export default function TodayPage() {
                             {activeSession && (
                                 <button className="btn-start btn-start-new" onClick={continueStudy}>
                                     <span className="btn-start-icon">▶</span>
-                                    <span>继续未完成学习</span>
+                                    <span>{isFlorrTheme ? '继续探索' : '继续未完成学习'}</span>
                                     <span className="btn-start-count">恢复上次进度</span>
                                 </button>
                             )}
                             {counts?.reviewCount > 0 && (
                                 <button className="btn-start btn-start-review" onClick={startReview}>
                                     <span className="btn-start-icon">🔄</span>
-                                    <span>开始复习</span>
+                                    <span>{isFlorrTheme ? '开始挑战' : '开始复习'}</span>
                                     <span className="btn-start-count">
                                         本次 {counts?.reviewBatchCount || 0} / 共 {counts?.reviewCount || 0} 词
                                     </span>
@@ -140,7 +150,7 @@ export default function TodayPage() {
                             {counts?.newCount > 0 && (
                                 <button className="btn-start btn-start-new" onClick={chooseNewWords}>
                                     <span className="btn-start-icon">✨</span>
-                                    <span>去词表选择新词</span>
+                                    <span>{isFlorrTheme ? '收集新花瓣' : '去词表选择新词'}</span>
                                     <span className="btn-start-count">
                                         可新学 {counts?.newCount || 0} 词
                                     </span>

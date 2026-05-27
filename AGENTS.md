@@ -31,8 +31,9 @@ Run `npm run lint` after code changes. Run `npm run build` when routing, deploym
 - Built-in wordlists are shared read-only data; user-owned tables are keyed by `user_id`.
 - Learning state is unique by `user_id + word`, so duplicate English words across lists share one progress record.
 - Daily study queue order is review, new learning, new-word review, then relapse words.
-- New learning itself does not upgrade SRS level; review-style phases update level only when recall and spelling both pass.
+- New learning itself does not upgrade SRS level; review-style phases update level only when recall, spelling, and usage all pass.
 - A failed recall or first spelling attempt adds the word to the same-day relapse queue.
+- Florr support is a frontend theme in `src/stores/themeStore.js` plus optional built-in wordlist import; it must not change SRS behavior or user data shape.
 
 ## Documentation
 

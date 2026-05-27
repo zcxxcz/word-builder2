@@ -46,6 +46,7 @@
 ### 4.1 V1 必做（P0）
 1. **词表**：
    - 内置：外研版新课标初一词汇（按册/单元组织），存储于 Supabase 共享表
+   - 可选内置扩展：Florr 花瓣词表，按 `unit` 字段映射为 Garden / Desert / Ocean / Jungle / Factory / Mystic 区域
    - 自定义：手动添加生词（通过 DeepSeek AI 自动生成释义）
 2. **计划与任务**：
    - 每日新学 N + SRS 到期复习 + 当天错词回流
@@ -111,6 +112,7 @@
 4. **我的** — 设置 / 导出 / 账号
 
 > 注：学习页为沉浸式全屏，不显示底部 Tab Bar。后台管理为隐藏路由 `#/admin`，仅管理员白名单账号可访问。
+> 注：可在“我的”中切换经典主题和 Florr 前端主题；主题只改变展示，不改变学习算法或数据结构。
 
 ---
 
@@ -210,6 +212,11 @@ Step A/B 支持在电脑上按 **Enter** 进入下一步；Step C 支持 **Ctrl 
   - phonetic（可选）
   - example（例句，可选）
 
+#### 9.1.1a 可选 Florr 花瓣词表
+- 作为额外内置词表导入，不替换外研版词表
+- 使用同一张 `built_in_words` 表，`unit` 表示主题区域
+- Florr 主题下把 L0-L3 展示为 Common / Rare / Epic / Legendary
+
 #### 9.1.2 自定义词表管理
 - 创建自定义词表（名称）
 - 手动添加词（见 9.2 智能生词生成）
@@ -298,6 +305,9 @@ Step A/B 支持在电脑上按 **Enter** 进入下一步；Step C 支持 **Ctrl 
 
 ### 9.5 我的/设置（P0）
 - 显示当前登录用户邮箱
+- 界面主题：
+  - 经典主题
+  - Florr 主题（本地持久化，仅改变前端展示）
 - 学习设置：
   - 每日新学量 daily_new（滑块，3–30）
   - 单次复习上限 review_cap（滑块，1–10）
@@ -384,7 +394,7 @@ Step A/B 支持在电脑上按 **Enter** 进入下一步；Step C 支持 **Ctrl 
 - 多义词困扰：默认保留常用义项 ≤ 3
 - 坚持难：任务上限 + 当天回流上限 + 战报强化正反馈
 - 网络依赖：需联网使用，断网时操作将失败（显示错误提示）
-- API 安全：开发阶段 Key 在前端，公开部署时须切换为 Edge Function 代理
+- API 安全：DeepSeek Key 只配置在 Supabase Edge Function 环境中，前端不得直接调用 DeepSeek
 
 ---
 
@@ -421,13 +431,17 @@ word-builder2/
 │   ├── main.jsx, App.jsx
 │   ├── index.css
 │   ├── lib/          (supabase, deepseek, tts)
-│   ├── stores/       (authStore, settingsStore, studyStore)
-│   ├── utils/        (srs, taskEngine, constants)
-│   ├── pages/        (Login, Today, Study, Wordlist, Progress, Settings)
+│   ├── stores/       (authStore, settingsStore, studyStore, themeStore)
+│   ├── utils/        (srs, taskEngine, constants, florrTheme)
+│   ├── pages/        (Login, Today, Study, Wordlist, Progress, Settings, Admin)
 │   └── components/   (Layout/, Study/)
 ├── supabase/
 │   ├── migration.sql
-│   ├── import_grade7a.sql, import_grade7b.sql
+│   ├── import_grade7a.sql, import_grade7b.sql, import_florr_petals.sql
 │   └── functions/deepseek-proxy/  (公开部署用)
+├── public/
+│   ├── florr-logo.png
+│   └── user-manual.html
+├── florr_petals.csv
 └── .env           (仅保存 VITE_SUPABASE_URL / VITE_SUPABASE_ANON_KEY 等本地变量名对应值)
 ```

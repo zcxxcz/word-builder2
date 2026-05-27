@@ -3,6 +3,7 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuthStore } from '../stores/authStore';
 import { useSettingsStore } from '../stores/settingsStore';
 import { useStudyStore } from '../stores/studyStore';
+import { THEMES, useThemeStore } from '../stores/themeStore';
 import { generateNewLearningQueue, generateReviewQueue } from '../utils/taskEngine';
 import { PHASE, STEP } from '../utils/constants';
 import RecallCard from '../components/Study/RecallCard';
@@ -16,7 +17,9 @@ export default function StudyPage() {
     const [searchParams] = useSearchParams();
     const { user } = useAuthStore();
     const { settings, loadSettings, loaded } = useSettingsStore();
+    const { theme } = useThemeStore();
     const study = useStudyStore();
+    const isFlorrTheme = theme === THEMES.FLORR;
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState('');
     const routeKey = searchParams.toString();
@@ -138,10 +141,10 @@ export default function StudyPage() {
 
     const getPhaseLabel = () => {
         switch (study.phase) {
-            case PHASE.REVIEW: return '复习';
-            case PHASE.NEW_LEARN: return '新学';
-            case PHASE.NEW_REVIEW: return '新词复习';
-            case PHASE.RELAPSE: return '错词回流';
+            case PHASE.REVIEW: return isFlorrTheme ? '挑战' : '复习';
+            case PHASE.NEW_LEARN: return isFlorrTheme ? '收集' : '新学';
+            case PHASE.NEW_REVIEW: return isFlorrTheme ? '强化' : '新词复习';
+            case PHASE.RELAPSE: return isFlorrTheme ? '回炉' : '错词回流';
             default: return '';
         }
     };
@@ -189,21 +192,30 @@ export default function StudyPage() {
         for (const [word, count] of Object.entries(results.wordErrors)) {
             if (count > maxErrors) { maxErrors = count; hardestWord = word; }
         }
+        const errorWordCount = Object.keys(results.wordErrors).length;
 
         return (
             <div className="study-page">
                 <div className="study-complete">
-                    <div className="complete-celebration">🎉</div>
-                    <h2>学习完成！</h2>
+                    <div className="complete-celebration">
+                        {isFlorrTheme ? (
+                            <img
+                                className="complete-florr-logo"
+                                src={`${import.meta.env.BASE_URL}florr-logo.png`}
+                                alt="florr.io"
+                            />
+                        ) : '🎉'}
+                    </div>
+                    <h2>{isFlorrTheme ? '探索完成！' : '学习完成！'}</h2>
 
                     <div className="complete-stats">
                         <div className="complete-stat">
                             <span className="complete-stat-value">{results.newCount}</span>
-                            <span className="complete-stat-label">新学</span>
+                            <span className="complete-stat-label">{isFlorrTheme ? '新花瓣' : '新学'}</span>
                         </div>
                         <div className="complete-stat">
                             <span className="complete-stat-value">{results.reviewCount}</span>
-                            <span className="complete-stat-label">复习</span>
+                            <span className="complete-stat-label">{isFlorrTheme ? '挑战' : '复习'}</span>
                         </div>
                         <div className="complete-stat">
                             <span className="complete-stat-value">{accuracy}%</span>
@@ -211,15 +223,33 @@ export default function StudyPage() {
                         </div>
                         <div className="complete-stat">
                             <span className="complete-stat-value">{results.levelUps}</span>
-                            <span className="complete-stat-label">升级词数</span>
+                            <span className="complete-stat-label">{isFlorrTheme ? '花瓣升级' : '升级词数'}</span>
                         </div>
                     </div>
 
                     <div className="complete-details">
                         <div className="detail-row">
-                            <span>⏱️ 学习时长</span>
+                            <span>{isFlorrTheme ? '探索时长' : '⏱️ 学习时长'}</span>
                             <strong>{minutes}分{seconds}秒</strong>
                         </div>
+                        {isFlorrTheme && results.newCount > 0 && (
+                            <div className="detail-row">
+                                <span>获得新花瓣</span>
+                                <strong>{results.newCount}</strong>
+                            </div>
+                        )}
+                        {isFlorrTheme && results.levelUps > 0 && (
+                            <div className="detail-row">
+                                <span>花瓣升级</span>
+                                <strong>{results.levelUps}</strong>
+                            </div>
+                        )}
+                        {isFlorrTheme && errorWordCount > 0 && (
+                            <div className="detail-row">
+                                <span>回炉强化</span>
+                                <strong>{errorWordCount}</strong>
+                            </div>
+                        )}
                         <div className="detail-row">
                             <span>✅ 回想通过</span>
                             <strong>{results.recallKnow} / {results.recallKnow + results.recallDontKnow}</strong>
@@ -238,14 +268,14 @@ export default function StudyPage() {
                         )}
                         {hardestWord && (
                             <div className="detail-row">
-                                <span>💪 最难词</span>
+                                <span>{isFlorrTheme ? '今日最难挑战' : '💪 最难词'}</span>
                                 <strong>{hardestWord}</strong>
                             </div>
                         )}
                     </div>
 
                     <button className="btn-primary btn-finish" onClick={handleExit}>
-                        返回首页
+                        {isFlorrTheme ? '返回今日探索' : '返回首页'}
                     </button>
                 </div>
             </div>
