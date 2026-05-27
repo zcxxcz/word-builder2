@@ -9,6 +9,7 @@ import StudyPage from './pages/StudyPage';
 import WordlistPage from './pages/WordlistPage';
 import ProgressPage from './pages/ProgressPage';
 import SettingsPage from './pages/SettingsPage';
+import AdminPage from './pages/AdminPage';
 
 export default function App() {
   const { initialize } = useAuthStore();
@@ -36,6 +37,9 @@ export default function App() {
           } />
           <Route path="/settings" element={
             <ProtectedRoute><SettingsPage /></ProtectedRoute>
+          } />
+          <Route path="/admin" element={
+            <ProtectedRoute><AdminPage /></ProtectedRoute>
           } />
         </Routes>
         <TabBar />

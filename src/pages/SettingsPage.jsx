@@ -1,4 +1,5 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
+import { Link } from 'react-router-dom';
 import { useAuthStore } from '../stores/authStore';
 import { useSettingsStore } from '../stores/settingsStore';
 import { supabase } from '../lib/supabase';
@@ -12,7 +13,25 @@ export default function SettingsPage() {
     const [showClearConfirm, setShowClearConfirm] = useState(false);
     const [clearStep, setClearStep] = useState(0);
     const [importMessage, setImportMessage] = useState('');
+    const [isAdmin, setIsAdmin] = useState(false);
     const effectiveReviewCap = Math.min(settings.review_cap, REVIEW_BATCH_LIMIT);
+
+    useEffect(() => {
+        let cancelled = false;
+
+        async function checkAdmin() {
+            if (!user) return;
+            const { data, error } = await supabase.rpc('is_admin');
+            if (!cancelled) {
+                setIsAdmin(!error && Boolean(data));
+            }
+        }
+
+        checkAdmin();
+        return () => {
+            cancelled = true;
+        };
+    }, [user]);
 
     const handleSettingChange = (key, value) => {
         updateSettings(user.id, { [key]: value });
@@ -271,6 +290,15 @@ export default function SettingsPage() {
                     📖 使用手册
                 </a>
             </div>
+
+            {isAdmin && (
+                <div className="settings-section">
+                    <h2>管理</h2>
+                    <Link className="setting-btn setting-link" to="/admin">
+                        📊 后台管理
+                    </Link>
+                </div>
+            )}
 
             {/* Data management */}
             <div className="settings-section">

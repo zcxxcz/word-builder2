@@ -18,9 +18,11 @@ export default function UsageCard({ word, onSubmit, onSkip }) {
     const [error, setError] = useState('');
     const [result, setResult] = useState(null);
     const inputRef = useRef(null);
+    const advanceLockRef = useRef(false);
     const meaning = useMemo(() => getDisplayMeaning(word), [word]);
 
     const loadExercise = useCallback(async () => {
+        advanceLockRef.current = false;
         setLoading(true);
         setError('');
         setResult(null);
@@ -73,6 +75,18 @@ export default function UsageCard({ word, onSubmit, onSkip }) {
         }
     };
 
+    const proceedOnce = (passed) => {
+        if (advanceLockRef.current) return;
+        advanceLockRef.current = true;
+        onSubmit(passed);
+    };
+
+    const skipOnce = () => {
+        if (advanceLockRef.current) return;
+        advanceLockRef.current = true;
+        onSkip();
+    };
+
     return (
         <div className="study-card usage-card">
             <div className="card-phase-label">场景应用</div>
@@ -100,7 +114,7 @@ export default function UsageCard({ word, onSubmit, onSkip }) {
                         <button className="btn-secondary" onClick={loadExercise}>
                             重试
                         </button>
-                        <button className="btn-secondary muted" onClick={onSkip}>
+                        <button className="btn-secondary muted" onClick={skipOnce}>
                             暂时跳过
                         </button>
                     </div>
@@ -145,7 +159,7 @@ export default function UsageCard({ word, onSubmit, onSkip }) {
                                 <button className="btn-secondary" onClick={handleSubmit} disabled={grading}>
                                     重试批改
                                 </button>
-                                <button className="btn-secondary muted" onClick={onSkip}>
+                                <button className="btn-secondary muted" onClick={skipOnce}>
                                     暂时跳过
                                 </button>
                             </div>
@@ -165,7 +179,8 @@ export default function UsageCard({ word, onSubmit, onSkip }) {
                             </div>
                             <button
                                 className="btn-submit-usage"
-                                onClick={() => onSubmit(result.passed)}
+                                onClick={() => proceedOnce(result.passed)}
+                                disabled={advanceLockRef.current}
                             >
                                 {result.passed ? '下一题' : '继续（加入回流）'}
                             </button>

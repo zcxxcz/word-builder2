@@ -11,8 +11,8 @@ const tabs = [
 export default function TabBar() {
     const location = useLocation();
 
-    // Hide tab bar during study session
-    if (location.pathname === '/study') return null;
+    // Hide tab bar during focused or non-primary screens.
+    if (location.pathname === '/study' || location.pathname === '/admin') return null;
 
     return (
         <nav className="tab-bar">

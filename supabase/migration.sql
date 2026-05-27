@@ -235,6 +235,505 @@ CREATE INDEX IF NOT EXISTS idx_active_study_sessions_user
   ON active_study_sessions(user_id);
 
 -- ============================================
+-- Admin Analytics
+-- ============================================
+
+-- Admin whitelist. Insert lowercase emails manually in Supabase SQL Editor.
+CREATE TABLE IF NOT EXISTS admin_users (
+  email TEXT PRIMARY KEY,
+  created_at TIMESTAMPTZ DEFAULT now()
+);
+
+-- Lightweight analytics events. Payloads must not contain prompts, answers, or secrets.
+CREATE TABLE IF NOT EXISTS analytics_events (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id UUID REFERENCES auth.users(id) ON DELETE CASCADE NOT NULL,
+  event_name TEXT NOT NULL,
+  event_date DATE NOT NULL DEFAULT CURRENT_DATE,
+  metadata JSONB NOT NULL DEFAULT '{}',
+  created_at TIMESTAMPTZ DEFAULT now()
+);
+
+ALTER TABLE admin_users ENABLE ROW LEVEL SECURITY;
+ALTER TABLE analytics_events ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS "Users can insert own analytics_events" ON analytics_events;
+CREATE POLICY "Users can insert own analytics_events"
+  ON analytics_events FOR INSERT
+  TO authenticated
+  WITH CHECK (auth.uid() = user_id);
+
+CREATE INDEX IF NOT EXISTS idx_analytics_events_user_date
+  ON analytics_events(user_id, event_date DESC);
+
+CREATE INDEX IF NOT EXISTS idx_analytics_events_name_date
+  ON analytics_events(event_name, event_date DESC);
+
+CREATE INDEX IF NOT EXISTS idx_analytics_events_created_at
+  ON analytics_events(created_at DESC);
+
+CREATE OR REPLACE FUNCTION is_admin()
+RETURNS BOOLEAN
+LANGUAGE sql
+SECURITY DEFINER
+STABLE
+SET search_path = public, auth
+AS $$
+  SELECT EXISTS (
+    SELECT 1
+    FROM public.admin_users au
+    WHERE au.email = lower(coalesce(auth.jwt() ->> 'email', ''))
+  );
+$$;
+
+CREATE OR REPLACE FUNCTION mask_admin_email(input_email TEXT)
+RETURNS TEXT
+LANGUAGE sql
+IMMUTABLE
+AS $$
+  WITH parts AS (
+    SELECT
+      split_part(coalesce(input_email, ''), '@', 1) AS local_part,
+      split_part(coalesce(input_email, ''), '@', 2) AS domain_part
+  )
+  SELECT CASE
+    WHEN input_email IS NULL OR position('@' IN input_email) = 0 THEN ''
+    WHEN length(local_part) <= 2 THEN left(local_part, 1) || '***@' || domain_part
+    ELSE left(local_part, 2) || '***' || right(local_part, 1) || '@' || domain_part
+  END
+  FROM parts;
+$$;
+
+CREATE OR REPLACE FUNCTION get_admin_dashboard(start_date DATE DEFAULT (CURRENT_DATE - 30), end_date DATE DEFAULT CURRENT_DATE)
+RETURNS JSONB
+LANGUAGE plpgsql
+SECURITY DEFINER
+STABLE
+SET search_path = public, auth
+AS $$
+DECLARE
+  range_start DATE := COALESCE(start_date, CURRENT_DATE - 30);
+  range_end DATE := COALESCE(end_date, CURRENT_DATE);
+  dashboard JSONB;
+BEGIN
+  IF NOT public.is_admin() THEN
+    RAISE EXCEPTION 'Admin access required' USING ERRCODE = '42501';
+  END IF;
+
+  IF range_start > range_end THEN
+    RAISE EXCEPTION 'start_date must be before or equal to end_date' USING ERRCODE = '22007';
+  END IF;
+
+  SELECT jsonb_build_object(
+    'overview', (
+      WITH active AS (
+        SELECT user_id FROM public.sessions WHERE date BETWEEN range_start AND range_end
+        UNION
+        SELECT user_id FROM public.analytics_events WHERE event_date BETWEEN range_start AND range_end
+      ),
+      session_stats AS (
+        SELECT
+          count(*) AS session_count,
+          COALESCE(sum(duration_seconds), 0) AS duration_seconds,
+          COALESCE(sum(new_count), 0) AS new_words,
+          COALESCE(sum(review_count), 0) AS review_words,
+          COALESCE(sum(level_ups), 0) AS level_ups,
+          COALESCE(round(avg(spelling_accuracy)::numeric, 2), 0) AS average_accuracy
+        FROM public.sessions
+        WHERE date BETWEEN range_start AND range_end
+      )
+      SELECT jsonb_build_object(
+        'totalUsers', (SELECT count(*) FROM auth.users),
+        'activeUsers', (SELECT count(*) FROM active),
+        'inactiveUsers', greatest((SELECT count(*) FROM auth.users) - (SELECT count(*) FROM active), 0),
+        'completedSessions', session_count,
+        'studyMinutes', floor(duration_seconds / 60.0)::int,
+        'newWords', new_words,
+        'reviewWords', review_words,
+        'levelUps', level_ups,
+        'averageAccuracy', average_accuracy,
+        'aiCalls', (
+          SELECT count(*)
+          FROM public.analytics_events
+          WHERE event_name = 'ai_call'
+            AND event_date BETWEEN range_start AND range_end
+        ),
+        'masteredWords', (
+          SELECT count(*)
+          FROM public.user_word_state
+          WHERE level >= 3
+        ),
+        'incompleteSessions', (
+          SELECT count(*)
+          FROM public.active_study_sessions
+          WHERE status = 'active'
+            AND updated_at < now() - interval '30 minutes'
+        )
+      )
+      FROM session_stats
+    ),
+    'dailyMetrics', (
+      WITH days AS (
+        SELECT generate_series(range_start::timestamp, range_end::timestamp, interval '1 day')::date AS day
+      ),
+      session_daily AS (
+        SELECT
+          date AS day,
+          count(*) AS sessions,
+          COALESCE(sum(new_count), 0) AS new_words,
+          COALESCE(sum(review_count), 0) AS review_words,
+          COALESCE(sum(duration_seconds), 0) AS duration_seconds,
+          COALESCE(round(avg(spelling_accuracy)::numeric, 2), 0) AS average_accuracy
+        FROM public.sessions
+        WHERE date BETWEEN range_start AND range_end
+        GROUP BY date
+      ),
+      active_daily AS (
+        SELECT day, count(DISTINCT user_id) AS active_users
+        FROM (
+          SELECT date AS day, user_id FROM public.sessions WHERE date BETWEEN range_start AND range_end
+          UNION ALL
+          SELECT event_date AS day, user_id FROM public.analytics_events WHERE event_date BETWEEN range_start AND range_end
+        ) activity
+        GROUP BY day
+      ),
+      ai_daily AS (
+        SELECT event_date AS day, count(*) AS ai_calls
+        FROM public.analytics_events
+        WHERE event_name = 'ai_call'
+          AND event_date BETWEEN range_start AND range_end
+        GROUP BY event_date
+      )
+      SELECT COALESCE(jsonb_agg(jsonb_build_object(
+        'date', days.day::text,
+        'activeUsers', COALESCE(active_daily.active_users, 0),
+        'sessions', COALESCE(session_daily.sessions, 0),
+        'newWords', COALESCE(session_daily.new_words, 0),
+        'reviewWords', COALESCE(session_daily.review_words, 0),
+        'studyMinutes', floor(COALESCE(session_daily.duration_seconds, 0) / 60.0)::int,
+        'averageAccuracy', COALESCE(session_daily.average_accuracy, 0),
+        'aiCalls', COALESCE(ai_daily.ai_calls, 0)
+      ) ORDER BY days.day), '[]'::jsonb)
+      FROM days
+      LEFT JOIN session_daily ON session_daily.day = days.day
+      LEFT JOIN active_daily ON active_daily.day = days.day
+      LEFT JOIN ai_daily ON ai_daily.day = days.day
+    ),
+    'users', (
+      WITH session_range AS (
+        SELECT
+          user_id,
+          count(*) AS session_count,
+          COALESCE(sum(duration_seconds), 0) AS duration_seconds,
+          COALESCE(round(avg(spelling_accuracy)::numeric, 2), 0) AS average_accuracy,
+          max(created_at) AS last_session_at
+        FROM public.sessions
+        WHERE date BETWEEN range_start AND range_end
+        GROUP BY user_id
+      ),
+      event_range AS (
+        SELECT
+          user_id,
+          count(*) FILTER (WHERE event_name = 'ai_call') AS ai_calls
+        FROM public.analytics_events
+        WHERE event_date BETWEEN range_start AND range_end
+        GROUP BY user_id
+      ),
+      word_stats AS (
+        SELECT
+          user_id,
+          count(*) AS studied_words,
+          count(*) FILTER (WHERE level >= 3) AS mastered_words
+        FROM public.user_word_state
+        GROUP BY user_id
+      ),
+      last_activity AS (
+        SELECT user_id, max(activity_at) AS last_active_at
+        FROM (
+          SELECT user_id, max(created_at) AS activity_at FROM public.sessions GROUP BY user_id
+          UNION ALL
+          SELECT user_id, max(created_at) AS activity_at FROM public.analytics_events GROUP BY user_id
+          UNION ALL
+          SELECT user_id, max(updated_at) AS activity_at FROM public.active_study_sessions GROUP BY user_id
+        ) activity
+        GROUP BY user_id
+      ),
+      rows AS (
+        SELECT
+          row_number() OVER (ORDER BY last_activity.last_active_at DESC NULLS LAST, u.created_at DESC) AS sort_order,
+          u.id,
+          u.email,
+          u.created_at,
+          last_activity.last_active_at,
+          COALESCE(session_range.session_count, 0) AS session_count,
+          COALESCE(session_range.duration_seconds, 0) AS duration_seconds,
+          COALESCE(session_range.average_accuracy, 0) AS average_accuracy,
+          COALESCE(word_stats.studied_words, 0) AS studied_words,
+          COALESCE(word_stats.mastered_words, 0) AS mastered_words,
+          COALESCE(event_range.ai_calls, 0) AS ai_calls,
+          active.id IS NOT NULL AS has_active_session
+        FROM auth.users u
+        LEFT JOIN session_range ON session_range.user_id = u.id
+        LEFT JOIN event_range ON event_range.user_id = u.id
+        LEFT JOIN word_stats ON word_stats.user_id = u.id
+        LEFT JOIN last_activity ON last_activity.user_id = u.id
+        LEFT JOIN public.active_study_sessions active ON active.user_id = u.id AND active.status = 'active'
+        ORDER BY last_activity.last_active_at DESC NULLS LAST, u.created_at DESC
+        LIMIT 100
+      )
+      SELECT COALESCE(jsonb_agg(jsonb_build_object(
+        'userId', id,
+        'userIdShort', left(id::text, 8),
+        'emailMasked', public.mask_admin_email(email),
+        'createdAt', created_at,
+        'lastActiveAt', last_active_at,
+        'sessions', session_count,
+        'studyMinutes', floor(duration_seconds / 60.0)::int,
+        'averageAccuracy', average_accuracy,
+        'studiedWords', studied_words,
+        'masteredWords', mastered_words,
+        'aiCalls', ai_calls,
+        'hasActiveSession', has_active_session
+      ) ORDER BY sort_order), '[]'::jsonb)
+      FROM rows
+    ),
+    'hardWords', (
+      WITH failures AS (
+        SELECT
+          lower(metadata ->> 'word') AS word,
+          event_name AS failure_type
+        FROM public.analytics_events
+        WHERE event_name IN ('recall_failed', 'spelling_failed', 'usage_failed')
+          AND event_date BETWEEN range_start AND range_end
+          AND metadata ? 'word'
+        UNION ALL
+        SELECT
+          lower(hardest_word) AS word,
+          'session_hardest' AS failure_type
+        FROM public.sessions
+        WHERE date BETWEEN range_start AND range_end
+          AND hardest_word IS NOT NULL
+          AND hardest_word <> ''
+      ),
+      grouped AS (
+        SELECT word, failure_type, count(*) AS failure_count
+        FROM failures
+        WHERE word IS NOT NULL AND word <> ''
+        GROUP BY word, failure_type
+        ORDER BY failure_count DESC, word ASC
+        LIMIT 20
+      )
+      SELECT COALESCE(jsonb_agg(jsonb_build_object(
+        'word', word,
+        'failureType', failure_type,
+        'count', failure_count
+      ) ORDER BY failure_count DESC, word ASC), '[]'::jsonb)
+      FROM grouped
+    ),
+    'incompleteSessions', (
+      WITH stale AS (
+        SELECT
+          active.user_id,
+          active.session_type,
+          active.updated_at,
+          u.email
+        FROM public.active_study_sessions active
+        JOIN auth.users u ON u.id = active.user_id
+        WHERE active.status = 'active'
+          AND active.updated_at < now() - interval '30 minutes'
+        ORDER BY active.updated_at ASC
+        LIMIT 20
+      )
+      SELECT jsonb_build_object(
+        'count', count(*),
+        'staleAfterMinutes', 30,
+        'sessions', COALESCE(jsonb_agg(jsonb_build_object(
+          'userId', user_id,
+          'userIdShort', left(user_id::text, 8),
+          'emailMasked', public.mask_admin_email(email),
+          'sessionType', session_type,
+          'updatedAt', updated_at
+        ) ORDER BY updated_at ASC), '[]'::jsonb)
+      )
+      FROM stale
+    )
+  ) INTO dashboard;
+
+  RETURN dashboard;
+END;
+$$;
+
+CREATE OR REPLACE FUNCTION get_admin_user_detail(target_user_id UUID)
+RETURNS JSONB
+LANGUAGE plpgsql
+SECURITY DEFINER
+STABLE
+SET search_path = public, auth
+AS $$
+DECLARE
+  detail JSONB;
+BEGIN
+  IF NOT public.is_admin() THEN
+    RAISE EXCEPTION 'Admin access required' USING ERRCODE = '42501';
+  END IF;
+
+  SELECT jsonb_build_object(
+    'profile', (
+      SELECT jsonb_build_object(
+        'userId', u.id,
+        'userIdShort', left(u.id::text, 8),
+        'emailMasked', public.mask_admin_email(u.email),
+        'createdAt', u.created_at,
+        'lastSignInAt', u.last_sign_in_at
+      )
+      FROM auth.users u
+      WHERE u.id = target_user_id
+    ),
+    'summary', (
+      SELECT jsonb_build_object(
+        'sessions', count(*),
+        'studyMinutes', floor(COALESCE(sum(duration_seconds), 0) / 60.0)::int,
+        'averageAccuracy', COALESCE(round(avg(spelling_accuracy)::numeric, 2), 0),
+        'newWords', COALESCE(sum(new_count), 0),
+        'reviewWords', COALESCE(sum(review_count), 0),
+        'levelUps', COALESCE(sum(level_ups), 0),
+        'studiedWords', (
+          SELECT count(*) FROM public.user_word_state WHERE user_id = target_user_id
+        ),
+        'masteredWords', (
+          SELECT count(*) FROM public.user_word_state WHERE user_id = target_user_id AND level >= 3
+        ),
+        'dueWords', (
+          SELECT count(*) FROM public.user_word_state WHERE user_id = target_user_id AND next_review_at <= CURRENT_DATE
+        ),
+        'aiCalls', (
+          SELECT count(*) FROM public.analytics_events WHERE user_id = target_user_id AND event_name = 'ai_call'
+        )
+      )
+      FROM public.sessions
+      WHERE user_id = target_user_id
+    ),
+    'levelDistribution', (
+      SELECT COALESCE(jsonb_object_agg(level::text, level_count), '{}'::jsonb)
+      FROM (
+        SELECT level, count(*) AS level_count
+        FROM public.user_word_state
+        WHERE user_id = target_user_id
+        GROUP BY level
+      ) levels
+    ),
+    'recentSessions', (
+      SELECT COALESCE(jsonb_agg(jsonb_build_object(
+        'id', id,
+        'date', date,
+        'type', type,
+        'newCount', new_count,
+        'reviewCount', review_count,
+        'spellingAccuracy', spelling_accuracy,
+        'selfEvalStats', self_eval_stats,
+        'durationSeconds', duration_seconds,
+        'hardestWord', hardest_word,
+        'levelUps', level_ups,
+        'createdAt', created_at
+      ) ORDER BY created_at DESC), '[]'::jsonb)
+      FROM (
+        SELECT *
+        FROM public.sessions
+        WHERE user_id = target_user_id
+        ORDER BY created_at DESC
+        LIMIT 20
+      ) recent
+    ),
+    'hardWords', (
+      WITH failures AS (
+        SELECT
+          lower(metadata ->> 'word') AS word,
+          event_name AS failure_type
+        FROM public.analytics_events
+        WHERE user_id = target_user_id
+          AND event_name IN ('recall_failed', 'spelling_failed', 'usage_failed')
+          AND metadata ? 'word'
+        UNION ALL
+        SELECT lower(hardest_word) AS word, 'session_hardest' AS failure_type
+        FROM public.sessions
+        WHERE user_id = target_user_id
+          AND hardest_word IS NOT NULL
+          AND hardest_word <> ''
+      ),
+      grouped AS (
+        SELECT word, failure_type, count(*) AS failure_count
+        FROM failures
+        WHERE word IS NOT NULL AND word <> ''
+        GROUP BY word, failure_type
+        ORDER BY failure_count DESC, word ASC
+        LIMIT 20
+      )
+      SELECT COALESCE(jsonb_agg(jsonb_build_object(
+        'word', word,
+        'failureType', failure_type,
+        'count', failure_count
+      ) ORDER BY failure_count DESC, word ASC), '[]'::jsonb)
+      FROM grouped
+    ),
+    'aiUsage', (
+      SELECT COALESCE(jsonb_agg(jsonb_build_object(
+        'action', action,
+        'status', status,
+        'count', usage_count
+      ) ORDER BY usage_count DESC, action ASC, status ASC), '[]'::jsonb)
+      FROM (
+        SELECT
+          COALESCE(metadata ->> 'action', 'unknown') AS action,
+          COALESCE(metadata ->> 'status', 'unknown') AS status,
+          count(*) AS usage_count
+        FROM public.analytics_events
+        WHERE user_id = target_user_id
+          AND event_name = 'ai_call'
+        GROUP BY action, status
+      ) usage
+    ),
+    'recentEvents', (
+      SELECT COALESCE(jsonb_agg(jsonb_build_object(
+        'eventName', event_name,
+        'eventDate', event_date,
+        'metadata', metadata,
+        'createdAt', created_at
+      ) ORDER BY created_at DESC), '[]'::jsonb)
+      FROM (
+        SELECT event_name, event_date, metadata, created_at
+        FROM public.analytics_events
+        WHERE user_id = target_user_id
+        ORDER BY created_at DESC
+        LIMIT 40
+      ) recent
+    ),
+    'activeSession', (
+      SELECT jsonb_build_object(
+        'status', status,
+        'sessionType', session_type,
+        'updatedAt', updated_at,
+        'createdAt', created_at
+      )
+      FROM public.active_study_sessions
+      WHERE user_id = target_user_id
+        AND status = 'active'
+      LIMIT 1
+    )
+  ) INTO detail;
+
+  RETURN detail;
+END;
+$$;
+
+REVOKE ALL ON FUNCTION is_admin() FROM PUBLIC;
+REVOKE ALL ON FUNCTION get_admin_dashboard(DATE, DATE) FROM PUBLIC;
+REVOKE ALL ON FUNCTION get_admin_user_detail(UUID) FROM PUBLIC;
+
+GRANT EXECUTE ON FUNCTION is_admin() TO authenticated;
+GRANT EXECUTE ON FUNCTION get_admin_dashboard(DATE, DATE) TO authenticated;
+GRANT EXECUTE ON FUNCTION get_admin_user_detail(UUID) TO authenticated;
+
+-- ============================================
 -- Insert built-in wordlists
 -- ============================================
 INSERT INTO built_in_wordlists (id, name, description) VALUES

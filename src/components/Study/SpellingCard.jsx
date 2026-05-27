@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from 'react';
+import { useCallback, useState, useRef, useEffect } from 'react';
 import { speak } from '../../lib/tts';
 import { useSettingsStore } from '../../stores/settingsStore';
 import './StudyCards.css';
@@ -20,17 +20,30 @@ export default function SpellingCard({
     const [input, setInput] = useState('');
     const [displayMeaning] = useState(() => pickDisplayMeaning(word));
     const inputRef = useRef(null);
+    const proceedLockRef = useRef(false);
+    const submitLockRef = useRef(false);
     const { settings } = useSettingsStore();
+
+    useEffect(() => {
+        proceedLockRef.current = false;
+        submitLockRef.current = false;
+    }, [word.word]);
+
+    const proceedOnce = useCallback(() => {
+        if (proceedLockRef.current) return;
+        proceedLockRef.current = true;
+        onProceed();
+    }, [onProceed]);
 
     // Auto-advance after correct spelling (1 second)
     useEffect(() => {
         if (spellingResult === 'correct' || correctionDone) {
             const timer = setTimeout(() => {
-                onProceed();
+                proceedOnce();
             }, 1000);
             return () => clearTimeout(timer);
         }
-    }, [spellingResult, correctionDone, onProceed]);
+    }, [spellingResult, correctionDone, proceedOnce]);
 
     const handleSpeak = () => {
         speak(word.word, { rate: settings.tts_rate, enabled: settings.tts_enabled });
@@ -41,8 +54,13 @@ export default function SpellingCard({
         if (!input.trim()) return;
 
         if (correctionDone) {
-            onProceed();
+            proceedOnce();
             return;
+        }
+
+        if (!needsCorrection && submitLockRef.current) return;
+        if (!needsCorrection) {
+            submitLockRef.current = true;
         }
 
         onSubmit(input);
@@ -57,9 +75,9 @@ export default function SpellingCard({
         if (e.key === 'Enter') {
             e.preventDefault();
             if (correctionDone) {
-                onProceed();
+                proceedOnce();
             } else if (spellingResult === 'correct') {
-                onProceed();
+                proceedOnce();
             } else {
                 handleSubmit();
             }

@@ -1,10 +1,11 @@
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { speak } from '../../lib/tts';
 import { useSettingsStore } from '../../stores/settingsStore';
 import './StudyCards.css';
 
 export default function RecallCard({ word, showAnswer, onReveal, onSubmit }) {
     const { settings } = useSettingsStore();
+    const [submitted, setSubmitted] = useState(false);
 
     const handleSpeak = () => {
         speak(word.word, { rate: settings.tts_rate, enabled: settings.tts_enabled });
@@ -22,18 +23,26 @@ export default function RecallCard({ word, showAnswer, onReveal, onSubmit }) {
             if (e.key === 'Enter' && !showAnswer) {
                 e.preventDefault();
                 onReveal();
-            } else if (showAnswer && key === 'c') {
+            } else if (showAnswer && key === 'c' && !submitted) {
                 e.preventDefault();
+                setSubmitted(true);
                 onSubmit(true);
-            } else if (showAnswer && key === 'w') {
+            } else if (showAnswer && key === 'w' && !submitted) {
                 e.preventDefault();
+                setSubmitted(true);
                 onSubmit(false);
             }
         };
 
         window.addEventListener('keydown', handleDocumentKeyDown);
         return () => window.removeEventListener('keydown', handleDocumentKeyDown);
-    }, [showAnswer, onReveal, onSubmit]);
+    }, [showAnswer, submitted, onReveal, onSubmit]);
+
+    const handleSubmit = (know) => {
+        if (submitted) return;
+        setSubmitted(true);
+        onSubmit(know);
+    };
 
     return (
         <div className="study-card recall-card">
@@ -70,13 +79,15 @@ export default function RecallCard({ word, showAnswer, onReveal, onSubmit }) {
                     <div className="card-eval-buttons">
                         <button
                             className="btn-eval btn-know"
-                            onClick={() => onSubmit(true)}
+                            onClick={() => handleSubmit(true)}
+                            disabled={submitted}
                         >
                             ✅ 想对了
                         </button>
                         <button
                             className="btn-eval btn-dont-know"
-                            onClick={() => onSubmit(false)}
+                            onClick={() => handleSubmit(false)}
+                            disabled={submitted}
                         >
                             ❌ 没想出来
                         </button>

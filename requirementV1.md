@@ -60,11 +60,15 @@
 6. **用户认证与云存储**：
    - 强制登录（Supabase Auth，支持邮箱/密码）
    - 所有数据实时存储于 Supabase（PostgreSQL），支持多设备同步
+7. **后台管理与轻量使用分析**：
+   - 管理员通过邮箱白名单访问隐藏后台
+   - 只读查看全站概览、用户学习明细、错词 Top、AI 调用和未完成会话
+   - 轻量事件日志不记录 prompt、学生答案、参考答案或密钥
 
 ### 4.2 V1 明确不做
 - 任何形式的选择题（意思/拼写均不提供选项）
 - 社交、排行榜、广告
-- 老师端/班级端、家长端（后续版本）
+- 老师端/班级端、家长端（后续版本）；后台管理仅限管理员只读运营分析，不面向学生、老师或家长
 
 ---
 
@@ -106,7 +110,7 @@
 3. **进度** — 学习统计 + 等级分布
 4. **我的** — 设置 / 导出 / 账号
 
-> 注：学习页为沉浸式全屏，不显示底部 Tab Bar。
+> 注：学习页为沉浸式全屏，不显示底部 Tab Bar。后台管理为隐藏路由 `#/admin`，仅管理员白名单账号可访问。
 
 ---
 
@@ -305,6 +309,7 @@ Step A/B 支持在电脑上按 **Enter** 进入下一步；Step C 支持 **Ctrl 
   - 导出数据（JSON）
   - 导入数据（JSON）
   - 清空所有数据（双重确认）
+- 管理员账号额外显示后台管理入口
 - 退出登录
 
 ---
@@ -324,10 +329,12 @@ Step A/B 支持在电脑上按 **Enter** 进入下一步；Step C 支持 **Ctrl 
 | `sessions` | 学习记录 | date, new_count, review_count, spelling_accuracy, level_ups, duration_seconds, hardest_word |
 | `user_settings` | 用户设置 | daily_new, review_cap, relapse_cap, tts_enabled, tts_rate, AI 计数字段 |
 | `active_study_sessions` | 未完成学习恢复点（用户级，临时数据） | user_id, status, session_type, snapshot |
+| `admin_users` | 后台管理员白名单 | email |
+| `analytics_events` | 轻量使用事件 | user_id, event_name, event_date, metadata, created_at |
 
 ### 10.2 导入导出
 - 导出 JSON：包含 user_word_state、sessions、custom_wordlists、custom_words、user_usage_exercises、user_settings
-- 未完成学习恢复点为临时数据，不纳入 JSON 导出
+- 未完成学习恢复点和轻量事件为运营/临时数据，不纳入 JSON 导出
 - 导入 JSON：按表 upsert（word_state 按 user_id+word 合并，词表新建导入）
 
 ---
@@ -342,6 +349,8 @@ Step A/B 支持在电脑上按 **Enter** 进入下一步；Step C 支持 **Ctrl 
 - `custom_wordlists`：用户只能管理自己的自定义词表
 - `custom_words`：用户只能管理自己的自定义词汇
 - `active_study_sessions`：用户只能读写自己的未完成学习恢复点
+- `analytics_events`：普通用户只能插入自己的轻量事件；跨用户后台读取只通过管理员 RPC
+- `admin_users`：通过 SQL Editor 手动维护，前端不提供写入口
 
 内置词表（`built_in_wordlists`、`built_in_words`）对所有认证用户只读。
 

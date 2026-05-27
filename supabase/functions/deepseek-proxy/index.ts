@@ -83,7 +83,41 @@ function getLimitConfig(action: string) {
     };
 }
 
+function getStudyDate(date = new Date()) {
+    const parts = new Intl.DateTimeFormat('zh-CN-u-nu-latn', {
+        timeZone: 'Asia/Shanghai',
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+    }).formatToParts(date);
+
+    const values = Object.fromEntries(parts.map(part => [part.type, part.value]));
+    return `${values.year}-${values.month}-${values.day}`;
+}
+
+async function recordAnalyticsEvent(
+    supabase: any,
+    userId: string,
+    eventName: string,
+    metadata: Record<string, unknown>,
+) {
+    try {
+        await supabase.from('analytics_events').insert({
+            user_id: userId,
+            event_name: eventName,
+            event_date: getStudyDate(),
+            metadata,
+        });
+    } catch (error) {
+        console.warn('Analytics event skipped:', error);
+    }
+}
+
 Deno.serve(async (req) => {
+    let analyticsClient: any = null;
+    let analyticsUserId = '';
+    let analyticsAction = 'unknown';
+
     if (req.method === 'OPTIONS') {
         return new Response('ok', { headers: corsHeaders });
     }
@@ -105,16 +139,30 @@ Deno.serve(async (req) => {
             return jsonResponse({ error: '认证失败' }, 401);
         }
 
+        analyticsClient = supabase;
+        analyticsUserId = user.id;
+
         const body = await req.json();
         const action = body.action || 'generate_word_content';
+        analyticsAction = String(action);
         const { word } = body;
 
         if (!word || typeof word !== 'string') {
+            await recordAnalyticsEvent(supabase, user.id, 'ai_call', {
+                action: analyticsAction,
+                status: 'error',
+                reason: 'validation',
+            });
             return jsonResponse({ error: '请提供英文单词' }, 400);
         }
 
         const deepseekKey = Deno.env.get('DEEPSEEK_API_KEY');
         if (!deepseekKey) {
+            await recordAnalyticsEvent(supabase, user.id, 'ai_call', {
+                action: analyticsAction,
+                status: 'error',
+                reason: 'missing_api_key',
+            });
             return jsonResponse({ error: 'API key not configured' }, 500);
         }
 
@@ -131,6 +179,10 @@ Deno.serve(async (req) => {
             : 0;
 
         if (currentCount >= limitConfig.limit) {
+            await recordAnalyticsEvent(supabase, user.id, 'ai_call', {
+                action: analyticsAction,
+                status: 'limit',
+            });
             return jsonResponse({ error: limitConfig.error }, 429);
         }
 
@@ -232,8 +284,21 @@ score 为 0-1 的数字；passed 只有在 score >= 0.7 且目标词用法正确
                 updated_at: new Date().toISOString(),
             }, { onConflict: 'user_id' });
 
+        await recordAnalyticsEvent(supabase, user.id, 'ai_call', {
+            action: analyticsAction,
+            status: 'success',
+        });
+
         return jsonResponse(parsed);
     } catch (error) {
+        if (analyticsClient && analyticsUserId) {
+            await recordAnalyticsEvent(analyticsClient, analyticsUserId, 'ai_call', {
+                action: analyticsAction,
+                status: 'error',
+                reason: 'service_error',
+            });
+        }
+
         console.error('Edge function error:', error);
         const message = error instanceof Error ? error.message : '服务器错误';
         return jsonResponse({ error: message || '服务器错误' }, 500);

@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
+import { recordAnalyticsEvent } from '../lib/analytics';
 import { supabase } from '../lib/supabase';
 import { PHASE, STEP } from '../utils/constants';
 import { calculateLevelUpdate, getToday, shuffle } from '../utils/srs';
@@ -75,6 +76,15 @@ function getRelapseItemCount(relapseWords, relapseCap) {
     return relapseWords
         .slice(0, relapseCap)
         .reduce((total, word) => total + normalizeRelapseSteps(word._relapseSteps).length, 0);
+}
+
+function wasSeenOnStudyDate(wordState, studyDate) {
+    if (!wordState?.last_seen_at) return false;
+
+    const lastSeenDate = new Date(wordState.last_seen_at);
+    if (Number.isNaN(lastSeenDate.getTime())) return false;
+
+    return getToday(lastSeenDate) === studyDate;
 }
 
 const emptySessionResults = {
@@ -294,6 +304,12 @@ export const useStudyStore = create(persist((set, get) => ({
             isCompletingSession: false,
         });
 
+        void recordAnalyticsEvent('study_session_started', {
+            session_type: sessionType,
+            review_count: reviewWords.length,
+            new_count: newWords.length,
+        }, userId);
+
         // Start with review phase if there are review words
         if (reviewWords.length > 0) {
             get().startPhase(PHASE.REVIEW, reviewWords);
@@ -398,7 +414,7 @@ export const useStudyStore = create(persist((set, get) => ({
      * Submit self-evaluation for recall step
      */
     submitRecall: (know) => {
-        const { currentWord, sessionResults, wordPhaseResults, isFinishingPhase, isCompletingSession } = get();
+        const { currentWord, phase, step, sessionResults, wordPhaseResults, isFinishingPhase, isCompletingSession } = get();
         if (!currentWord || isFinishingPhase || isCompletingSession) return;
 
         const wordKey = currentWord.word.toLowerCase();
@@ -410,6 +426,11 @@ export const useStudyStore = create(persist((set, get) => ({
             newResults.recallDontKnow++;
             // Add to relapse
             get().addToRelapse(currentWord);
+            void recordAnalyticsEvent('recall_failed', {
+                word: wordKey,
+                phase,
+                step,
+            });
         }
 
         const newWordResults = { ...wordPhaseResults };
@@ -429,7 +450,7 @@ export const useStudyStore = create(persist((set, get) => ({
      * Submit spelling attempt
      */
     submitSpelling: (input) => {
-        const { currentWord, sessionResults, wordPhaseResults, needsCorrection, isFinishingPhase, isCompletingSession } = get();
+        const { currentWord, phase, step, sessionResults, wordPhaseResults, needsCorrection, isFinishingPhase, isCompletingSession } = get();
         if (!currentWord || isFinishingPhase || isCompletingSession) return;
 
         const wordKey = currentWord.word.toLowerCase();
@@ -478,6 +499,11 @@ export const useStudyStore = create(persist((set, get) => ({
 
             // Add to relapse
             get().addToRelapse(currentWord);
+            void recordAnalyticsEvent('spelling_failed', {
+                word: wordKey,
+                phase,
+                step,
+            });
 
             if (!newResults.wordErrors[wordKey]) {
                 newResults.wordErrors[wordKey] = 0;
@@ -501,7 +527,7 @@ export const useStudyStore = create(persist((set, get) => ({
      * Submit AI-graded usage application result.
      */
     submitUsage: (passed) => {
-        const { currentWord, sessionResults, wordPhaseResults, isFinishingPhase, isCompletingSession } = get();
+        const { currentWord, phase, step, sessionResults, wordPhaseResults, isFinishingPhase, isCompletingSession } = get();
         if (!currentWord || isFinishingPhase || isCompletingSession) return;
 
         const wordKey = currentWord.word.toLowerCase();
@@ -520,6 +546,11 @@ export const useStudyStore = create(persist((set, get) => ({
                 newResults.wordErrors[wordKey] = 0;
             }
             newResults.wordErrors[wordKey]++;
+            void recordAnalyticsEvent('usage_failed', {
+                word: wordKey,
+                phase,
+                step,
+            });
         }
 
         const newWordResults = { ...wordPhaseResults };
@@ -539,7 +570,7 @@ export const useStudyStore = create(persist((set, get) => ({
      * Skip usage application when AI generation/grading is unavailable.
      */
     skipUsage: () => {
-        const { currentWord, sessionResults, wordPhaseResults, isFinishingPhase, isCompletingSession } = get();
+        const { currentWord, phase, step, sessionResults, wordPhaseResults, isFinishingPhase, isCompletingSession } = get();
         if (!currentWord || isFinishingPhase || isCompletingSession) return;
 
         const wordKey = currentWord.word.toLowerCase();
@@ -557,6 +588,12 @@ export const useStudyStore = create(persist((set, get) => ({
         });
 
         console.log('usage_skip');
+        void recordAnalyticsEvent('usage_skipped', {
+            word: wordKey,
+            phase,
+            step,
+            reason: 'manual_skip',
+        });
         get().advanceWord();
     },
 
@@ -609,6 +646,7 @@ export const useStudyStore = create(persist((set, get) => ({
                 const userId = (await supabase.auth.getUser()).data.user?.id;
                 if (userId) {
                     let levelUps = sessionResults.levelUps;
+                    const studyDate = getToday();
 
                     for (const [wordKey, results] of Object.entries(wordPhaseResults)) {
                         if (
@@ -625,6 +663,11 @@ export const useStudyStore = create(persist((set, get) => ({
                                 .maybeSingle();
 
                             const currentState = existing || { level: 0, wrong_count: 0, correct_streak: 0 };
+
+                            if (existing && wasSeenOnStudyDate(existing, studyDate)) {
+                                continue;
+                            }
+
                             const updates = calculateLevelUpdate(
                                 currentState,
                                 results.recallPassed,
@@ -752,6 +795,15 @@ export const useStudyStore = create(persist((set, get) => ({
         try {
             if (userId) {
                 await supabase.from('sessions').insert(sessionRecord);
+                void recordAnalyticsEvent('study_session_completed', {
+                    session_type: sessionRecord.type,
+                    review_count: sessionRecord.review_count,
+                    new_count: sessionRecord.new_count,
+                    duration_seconds: sessionRecord.duration_seconds,
+                    spelling_accuracy: sessionRecord.spelling_accuracy,
+                    level_ups: sessionRecord.level_ups,
+                    hardest_word: sessionRecord.hardest_word,
+                }, userId);
                 await get().clearActiveSession(userId);
             }
 

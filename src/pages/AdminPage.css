@@ -1,0 +1,460 @@
+.admin-page {
+    max-width: 1180px;
+    margin: 0 auto;
+    padding: 24px 18px 48px;
+}
+
+.admin-header {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 18px;
+    margin-bottom: 20px;
+}
+
+.admin-header h1 {
+    font-size: 30px;
+    line-height: 1.1;
+    margin: 0 0 8px;
+    color: var(--text-primary);
+}
+
+.admin-header p {
+    color: var(--text-secondary);
+    font-size: 14px;
+    margin: 0;
+}
+
+.admin-back-link,
+.admin-toolbar button,
+.admin-panel-header button {
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    background: var(--surface);
+    color: var(--text-primary);
+    cursor: pointer;
+    font: inherit;
+    font-weight: 600;
+    text-decoration: none;
+    transition: background 0.2s, border-color 0.2s;
+}
+
+.admin-back-link {
+    padding: 10px 14px;
+    white-space: nowrap;
+}
+
+.admin-back-link:hover,
+.admin-toolbar button:hover,
+.admin-panel-header button:hover {
+    background: var(--primary-alpha);
+    border-color: var(--primary-light);
+}
+
+.admin-loading,
+.admin-empty-panel {
+    min-height: 300px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 14px;
+    color: var(--text-secondary);
+}
+
+.admin-empty-panel {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 28px;
+}
+
+.admin-empty-panel h2 {
+    color: var(--text-primary);
+    margin: 0;
+}
+
+.admin-empty-panel p {
+    margin: 0;
+    text-align: center;
+}
+
+.admin-toolbar {
+    display: flex;
+    align-items: end;
+    gap: 12px;
+    padding: 14px;
+    margin-bottom: 18px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+}
+
+.admin-toolbar label {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    color: var(--text-secondary);
+    font-size: 12px;
+    font-weight: 600;
+}
+
+.admin-toolbar input {
+    height: 38px;
+    min-width: 150px;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    background: var(--surface-dim);
+    color: var(--text-primary);
+    font: inherit;
+    padding: 0 10px;
+}
+
+.admin-toolbar button {
+    height: 38px;
+    padding: 0 16px;
+}
+
+.admin-toolbar button:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+}
+
+.admin-error {
+    padding: 12px 14px;
+    margin-bottom: 16px;
+    border: 1px solid var(--error);
+    border-radius: 8px;
+    background: var(--error-bg);
+    color: var(--error);
+    font-size: 14px;
+}
+
+.admin-metrics {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 12px;
+    margin-bottom: 18px;
+}
+
+.admin-metric,
+.admin-panel {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    box-shadow: var(--shadow-sm);
+}
+
+.admin-metric {
+    min-height: 120px;
+    padding: 16px;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+}
+
+.admin-metric span,
+.admin-metric small,
+.admin-panel-header span,
+.admin-muted {
+    color: var(--text-secondary);
+}
+
+.admin-metric span {
+    font-size: 13px;
+    font-weight: 600;
+}
+
+.admin-metric strong {
+    font-size: 30px;
+    color: var(--text-primary);
+    line-height: 1;
+}
+
+.admin-metric small {
+    font-size: 12px;
+}
+
+.admin-grid {
+    display: grid;
+    grid-template-columns: 2fr 1fr;
+    gap: 14px;
+    margin-bottom: 14px;
+}
+
+.admin-panel {
+    padding: 18px;
+    margin-bottom: 14px;
+}
+
+.admin-panel-wide {
+    min-width: 0;
+}
+
+.admin-panel-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    margin-bottom: 14px;
+}
+
+.admin-panel-header h2 {
+    font-size: 17px;
+    margin: 0;
+    color: var(--text-primary);
+}
+
+.admin-panel-header span {
+    font-size: 12px;
+    text-align: right;
+}
+
+.admin-panel-header button {
+    padding: 8px 12px;
+}
+
+.admin-daily-list,
+.admin-hard-list,
+.admin-event-list {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.admin-daily-row {
+    display: grid;
+    grid-template-columns: 58px minmax(120px, 1fr) minmax(150px, 220px);
+    align-items: center;
+    gap: 12px;
+}
+
+.admin-daily-date {
+    color: var(--text-secondary);
+    font-size: 13px;
+    font-weight: 600;
+}
+
+.admin-daily-track {
+    height: 18px;
+    background: var(--surface-dim);
+    border-radius: 8px;
+    overflow: hidden;
+}
+
+.admin-daily-fill {
+    height: 100%;
+    min-width: 2px;
+    background: linear-gradient(90deg, var(--primary), var(--accent));
+    border-radius: 8px;
+}
+
+.admin-daily-meta {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    font-size: 12px;
+    color: var(--text-secondary);
+}
+
+.admin-daily-meta strong {
+    color: var(--text-primary);
+    font-size: 14px;
+}
+
+.admin-hard-item,
+.admin-event-item {
+    padding: 10px 12px;
+    background: var(--surface-dim);
+    border-radius: 8px;
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+}
+
+.admin-hard-item strong,
+.admin-event-item strong {
+    color: var(--text-primary);
+    font-size: 14px;
+}
+
+.admin-hard-item span,
+.admin-event-item span {
+    color: var(--text-secondary);
+    font-size: 12px;
+    overflow-wrap: anywhere;
+}
+
+.admin-hard-list.compact {
+    gap: 6px;
+}
+
+.admin-table-wrap {
+    overflow-x: auto;
+}
+
+.admin-table {
+    width: 100%;
+    min-width: 780px;
+    border-collapse: collapse;
+}
+
+.admin-table th,
+.admin-table td {
+    padding: 12px 10px;
+    border-bottom: 1px solid var(--border);
+    text-align: left;
+    font-size: 13px;
+    color: var(--text-secondary);
+    vertical-align: middle;
+}
+
+.admin-table th {
+    color: var(--text-tertiary);
+    font-weight: 700;
+}
+
+.admin-table tbody tr {
+    cursor: pointer;
+}
+
+.admin-table tbody tr:hover,
+.admin-table tbody tr.selected {
+    background: var(--primary-alpha);
+}
+
+.admin-user-button {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+    padding: 0;
+    border: none;
+    background: transparent;
+    color: inherit;
+    font: inherit;
+    text-align: left;
+    cursor: pointer;
+}
+
+.admin-user-button strong {
+    color: var(--text-primary);
+}
+
+.admin-user-button span {
+    color: var(--text-tertiary);
+    font-size: 12px;
+}
+
+.admin-detail {
+    border-color: var(--primary-light);
+}
+
+.admin-detail-head {
+    display: flex;
+    justify-content: space-between;
+    gap: 16px;
+    padding: 14px;
+    margin-bottom: 14px;
+    background: var(--surface-dim);
+    border-radius: 8px;
+}
+
+.admin-detail-head div {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    min-width: 0;
+}
+
+.admin-detail-head strong {
+    color: var(--text-primary);
+}
+
+.admin-detail-head span,
+.admin-detail-head small {
+    color: var(--text-secondary);
+    font-size: 12px;
+    overflow-wrap: anywhere;
+}
+
+.admin-detail-summary {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 10px;
+    margin-bottom: 18px;
+}
+
+.admin-detail-summary div,
+.admin-level-list div {
+    padding: 12px;
+    background: var(--surface-dim);
+    border-radius: 8px;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.admin-detail-summary span,
+.admin-level-list span {
+    color: var(--text-secondary);
+    font-size: 12px;
+    font-weight: 600;
+}
+
+.admin-detail-summary strong,
+.admin-level-list strong {
+    color: var(--text-primary);
+    font-size: 18px;
+}
+
+.admin-detail-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 14px;
+    margin-top: 14px;
+}
+
+.admin-detail-grid h3 {
+    margin: 0 0 10px;
+    font-size: 15px;
+    color: var(--text-primary);
+}
+
+.admin-level-list {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 8px;
+}
+
+@media (max-width: 820px) {
+    .admin-page {
+        padding: 20px 14px 40px;
+    }
+
+    .admin-header,
+    .admin-toolbar,
+    .admin-detail-head {
+        flex-direction: column;
+        align-items: stretch;
+    }
+
+    .admin-metrics,
+    .admin-grid,
+    .admin-detail-summary,
+    .admin-detail-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .admin-daily-row {
+        grid-template-columns: 52px 1fr;
+    }
+
+    .admin-daily-meta {
+        grid-column: 2;
+    }
+
+    .admin-toolbar input,
+    .admin-toolbar button {
+        width: 100%;
+    }
+}
