@@ -4,7 +4,7 @@ import { useAuthStore } from '../stores/authStore';
 import { useSettingsStore } from '../stores/settingsStore';
 import { THEMES, useThemeStore } from '../stores/themeStore';
 import { supabase } from '../lib/supabase';
-import { generateWordContent } from '../lib/deepseek';
+import { generateWordContent, isValidUsageExercise } from '../lib/deepseek';
 import { FLORR_AREAS, getFlorrRarity, isFlorrWordlist } from '../utils/florrTheme';
 import './WordlistPage.css';
 
@@ -282,7 +282,10 @@ export default function WordlistPage() {
                 example: exampleText,
             });
 
-            if (usagePromptCn && exampleText) {
+            if (isValidUsageExercise({
+                prompt_cn: usagePromptCn,
+                reference_answer_en: exampleText,
+            })) {
                 await supabase.from('user_usage_exercises').upsert({
                     user_id: user.id,
                     word: wordText.toLowerCase(),

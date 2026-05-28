@@ -23,6 +23,28 @@ function normalizeWord(word) {
     return word.trim().toLowerCase();
 }
 
+const USAGE_PROMPT_META_PATTERNS = [
+    /下面的英文/,
+    /英文句子/,
+    /英文.*翻译.*中文/,
+    /翻译.*成中文/,
+    /译成中文/,
+    /请翻译/,
+    /参考答案/,
+    /目标词/,
+];
+
+export function isValidUsageExercise(exercise) {
+    const promptCn = exercise?.prompt_cn?.trim() || '';
+    const referenceAnswerEn = exercise?.reference_answer_en?.trim() || '';
+
+    if (!promptCn || !referenceAnswerEn) return false;
+    if (!/[\u4e00-\u9fff]/.test(promptCn)) return false;
+    if (/[A-Za-z]/.test(promptCn)) return false;
+    if (!/[A-Za-z]/.test(referenceAnswerEn)) return false;
+    return !USAGE_PROMPT_META_PATTERNS.some(pattern => pattern.test(promptCn));
+}
+
 /**
  * Call the Supabase Edge Function to generate word content via DeepSeek API
  * The API key is securely stored on the server side.
@@ -91,7 +113,7 @@ export async function getUsageExercise(word, meaningCn) {
         .maybeSingle();
 
     if (cacheError) throw cacheError;
-    if (cached?.prompt_cn && cached?.reference_answer_en) {
+    if (isValidUsageExercise(cached)) {
         return cached;
     }
 
@@ -101,12 +123,12 @@ export async function getUsageExercise(word, meaningCn) {
         .eq('user_id', userId)
         .eq('word', wordKey)
         .order('updated_at', { ascending: false })
-        .limit(1)
-        .maybeSingle();
+        .limit(5);
 
     if (wordCacheError) throw wordCacheError;
-    if (wordCached?.prompt_cn && wordCached?.reference_answer_en) {
-        return wordCached;
+    const reusableExercise = wordCached?.find(isValidUsageExercise);
+    if (reusableExercise) {
+        return reusableExercise;
     }
 
     const usage = checkDailyLimit('deepseek_usage_gen', 200);
@@ -135,8 +157,8 @@ export async function getUsageExercise(word, meaningCn) {
         reference_answer_en: data.reference_answer_en || '',
     };
 
-    if (!exercise.prompt_cn || !exercise.reference_answer_en) {
-        throw new Error('场景题生成结果不完整，请重试');
+    if (!isValidUsageExercise(exercise)) {
+        throw new Error('场景题生成结果不符合要求，请重试');
     }
 
     await supabase.from('user_usage_exercises').upsert({
