@@ -30,6 +30,7 @@ Run `npm run lint` after code changes. Run `npm run build` when routing, deploym
 - The canonical Supabase schema is `supabase/migration.sql`.
 - Built-in wordlists are shared read-only data; user-owned tables are keyed by `user_id`.
 - Learning state is unique by `user_id + word`, so duplicate English words across lists share one progress record.
+- When editing a custom word's English spelling, keep word-keyed state consistent by migrating `user_word_state` and `user_usage_exercises`; deleting a custom word must not delete learning progress.
 - Daily study queue order is review, new learning, new-word review, then relapse words.
 - New learning itself does not upgrade SRS level; review-style phases update level only when recall, spelling, and usage all pass.
 - A failed recall or first spelling attempt adds the word to the same-day relapse queue.

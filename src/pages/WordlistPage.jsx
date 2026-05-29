@@ -35,6 +35,7 @@ export default function WordlistPage() {
     const [showAddWord, setShowAddWord] = useState(false);
     const [addWordInput, setAddWordInput] = useState('');
     const [generatedWord, setGeneratedWord] = useState(null);
+    const [spellingSuggestion, setSpellingSuggestion] = useState(null);
     const [generating, setGenerating] = useState(false);
     const [genError, setGenError] = useState('');
     const [saving, setSaving] = useState(false);
@@ -47,6 +48,11 @@ export default function WordlistPage() {
     // Create custom list modal
     const [showCreateList, setShowCreateList] = useState(false);
     const [newListName, setNewListName] = useState('');
+
+    // Edit custom word modal
+    const [editingWord, setEditingWord] = useState(null);
+    const [editForm, setEditForm] = useState(null);
+    const [editError, setEditError] = useState('');
 
     const dailyNewLimit = settings.daily_new || 10;
 
@@ -209,34 +215,159 @@ export default function WordlistPage() {
         return '';
     };
 
+    const throwOnError = ({ error }) => {
+        if (error) throw error;
+    };
+
+    const makeGeneratedWord = (wordText, result = {}) => ({
+        word: wordText,
+        meaning_cn: result.meaning_cn || '',
+        phonetic: result.phonetic || '',
+        example: result.example || '',
+        usage_prompt_cn: result.usage_prompt_cn || '',
+    });
+
+    const resetAddWordModal = () => {
+        setShowAddWord(false);
+        setAddWordInput('');
+        setGeneratedWord(null);
+        setSpellingSuggestion(null);
+        setGenError('');
+    };
+
+    const cacheUsageExercise = async (wordText, meaningText, exampleText, usagePromptCn) => {
+        const exercise = {
+            prompt_cn: usagePromptCn,
+            reference_answer_en: exampleText,
+        };
+
+        if (!isValidUsageExercise(exercise, { word: wordText, meaningCn: meaningText })) return;
+
+        throwOnError(await supabase.from('user_usage_exercises').upsert({
+            user_id: user.id,
+            word: normalizeWord(wordText),
+            meaning_cn: meaningText,
+            ...exercise,
+            updated_at: new Date().toISOString(),
+        }, { onConflict: 'user_id,word,meaning_cn' }));
+    };
+
+    const migrateUserWordState = async (oldWordKey, newWordKey) => {
+        const { data: existingNewState, error: existingNewError } = await supabase
+            .from('user_word_state')
+            .select('id')
+            .eq('user_id', user.id)
+            .eq('word', newWordKey)
+            .maybeSingle();
+        if (existingNewError) throw existingNewError;
+
+        if (existingNewState) {
+            throwOnError(await supabase
+                .from('user_word_state')
+                .delete()
+                .eq('user_id', user.id)
+                .eq('word', oldWordKey));
+            return;
+        }
+
+        throwOnError(await supabase
+            .from('user_word_state')
+            .update({ word: newWordKey, updated_at: new Date().toISOString() })
+            .eq('user_id', user.id)
+            .eq('word', oldWordKey));
+    };
+
+    const migrateUsageExercises = async (oldWordKey, newWordKey) => {
+        const { data: oldExercises, error: oldError } = await supabase
+            .from('user_usage_exercises')
+            .select('*')
+            .eq('user_id', user.id)
+            .eq('word', oldWordKey);
+        if (oldError) throw oldError;
+        if (!oldExercises?.length) return;
+
+        const { data: newExercises, error: newError } = await supabase
+            .from('user_usage_exercises')
+            .select('*')
+            .eq('user_id', user.id)
+            .eq('word', newWordKey);
+        if (newError) throw newError;
+
+        const newByMeaning = new Map((newExercises || []).map(exercise => [exercise.meaning_cn, exercise]));
+
+        for (const exercise of oldExercises) {
+            const existing = newByMeaning.get(exercise.meaning_cn);
+            if (!existing) {
+                throwOnError(await supabase
+                    .from('user_usage_exercises')
+                    .update({ word: newWordKey })
+                    .eq('id', exercise.id)
+                    .eq('user_id', user.id));
+                continue;
+            }
+
+            if (new Date(exercise.updated_at || 0) > new Date(existing.updated_at || 0)) {
+                throwOnError(await supabase
+                    .from('user_usage_exercises')
+                    .update({
+                        prompt_cn: exercise.prompt_cn,
+                        reference_answer_en: exercise.reference_answer_en,
+                        updated_at: exercise.updated_at,
+                    })
+                    .eq('id', existing.id)
+                    .eq('user_id', user.id));
+            }
+
+            throwOnError(await supabase
+                .from('user_usage_exercises')
+                .delete()
+                .eq('id', exercise.id)
+                .eq('user_id', user.id));
+        }
+    };
+
+    const migrateWordReferences = async (oldWordKey, newWordKey) => {
+        if (!oldWordKey || !newWordKey || oldWordKey === newWordKey) return;
+
+        await migrateUserWordState(oldWordKey, newWordKey);
+        await migrateUsageExercises(oldWordKey, newWordKey);
+    };
+
     // AI word generation
     const handleGenerate = async () => {
         if (!addWordInput.trim()) return;
         setGenerating(true);
         setGenError('');
         setGeneratedWord(null);
+        setSpellingSuggestion(null);
 
         try {
-            const result = await generateWordContent(addWordInput.trim());
-            setGeneratedWord({
-                word: addWordInput.trim(),
-                meaning_cn: result.meaning_cn || '',
-                phonetic: result.phonetic || '',
-                example: result.example || '',
-                usage_prompt_cn: result.usage_prompt_cn || '',
-            });
+            const inputWord = addWordInput.trim();
+            const result = await generateWordContent(inputWord);
+            const canonicalWord = (result.canonical_word || inputWord).trim();
+
+            if (result.spelling_suspected && canonicalWord && normalizeWord(canonicalWord) !== normalizeWord(inputWord)) {
+                setSpellingSuggestion({
+                    originalWord: inputWord,
+                    suggestedWord: canonicalWord,
+                    result,
+                });
+            } else {
+                setGeneratedWord(makeGeneratedWord(inputWord, result));
+            }
         } catch (err) {
             setGenError(err.message);
             // Allow manual entry on failure
-            setGeneratedWord({
-                word: addWordInput.trim(),
-                meaning_cn: '',
-                phonetic: '',
-                example: '',
-                usage_prompt_cn: '',
-            });
+            setGeneratedWord(makeGeneratedWord(addWordInput.trim()));
         }
         setGenerating(false);
+    };
+
+    const confirmSpellingSuggestion = (useSuggestedWord) => {
+        if (!spellingSuggestion) return;
+        const wordText = useSuggestedWord ? spellingSuggestion.suggestedWord : spellingSuggestion.originalWord;
+        setGeneratedWord(makeGeneratedWord(wordText, spellingSuggestion.result));
+        setSpellingSuggestion(null);
     };
 
     const handleSaveWord = async () => {
@@ -246,17 +377,18 @@ export default function WordlistPage() {
         try {
             // Find or create default custom wordlist "生词本"
             let targetListId;
-            let { data: defaultList } = await supabase
+            let { data: defaultList, error: defaultListError } = await supabase
                 .from('custom_wordlists')
                 .select('id')
                 .eq('user_id', user.id)
                 .eq('name', '生词本')
-                .single();
+                .maybeSingle();
+            if (defaultListError) throw defaultListError;
 
             if (defaultList) {
                 targetListId = defaultList.id;
             } else {
-                const { data: newList } = await supabase
+                const { data: newList, error: newListError } = await supabase
                     .from('custom_wordlists')
                     .insert({
                         user_id: user.id,
@@ -265,6 +397,7 @@ export default function WordlistPage() {
                     })
                     .select('id')
                     .single();
+                if (newListError) throw newListError;
                 targetListId = newList.id;
                 loadWordlists();
             }
@@ -274,14 +407,106 @@ export default function WordlistPage() {
             const exampleText = generatedWord.example.trim();
             const usagePromptCn = generatedWord.usage_prompt_cn?.trim() || '';
 
-            await supabase.from('custom_words').insert({
+            throwOnError(await supabase.from('custom_words').insert({
                 user_id: user.id,
                 wordlist_id: targetListId,
                 word: wordText,
                 meaning_cn: meaningText,
                 phonetic: generatedWord.phonetic || '',
                 example: exampleText,
-            });
+            }));
+
+            await cacheUsageExercise(wordText, meaningText, exampleText, usagePromptCn);
+
+            resetAddWordModal();
+            if (selectedList === targetListId) {
+                loadWords({ id: targetListId, name: selectedListName }, false);
+            }
+        } catch (err) {
+            setGenError(err.message);
+        }
+        setSaving(false);
+    };
+
+    const openEditWord = async (word, event) => {
+        event.stopPropagation();
+        const form = {
+            word: word.word || '',
+            meaning_cn: word.meaning_cn || '',
+            phonetic: word.phonetic || '',
+            example: word.example || '',
+            usage_prompt_cn: '',
+        };
+
+        setEditingWord(word);
+        setEditForm(form);
+        setEditError('');
+
+        const wordKey = normalizeWord(word.word);
+        if (!wordKey) return;
+
+        const { data, error } = await supabase
+            .from('user_usage_exercises')
+            .select('prompt_cn')
+            .eq('user_id', user.id)
+            .eq('word', wordKey)
+            .eq('meaning_cn', word.meaning_cn?.trim() || '')
+            .maybeSingle();
+
+        if (error) {
+            setEditError(error.message);
+            return;
+        }
+
+        if (data?.prompt_cn) {
+            setEditForm(current => current ? { ...current, usage_prompt_cn: data.prompt_cn } : current);
+        }
+    };
+
+    const closeEditWord = () => {
+        setEditingWord(null);
+        setEditForm(null);
+        setEditError('');
+    };
+
+    const clearUsageExerciseCache = async (wordText, meaningText) => {
+        throwOnError(await supabase
+            .from('user_usage_exercises')
+            .delete()
+            .eq('user_id', user.id)
+            .eq('word', normalizeWord(wordText))
+            .eq('meaning_cn', meaningText));
+    };
+
+    const handleSaveEditWord = async () => {
+        if (!editingWord || !editForm?.word.trim()) return;
+        setSaving(true);
+        setEditError('');
+
+        try {
+            const oldWordKey = normalizeWord(editingWord.word);
+            const oldMeaningText = editingWord.meaning_cn?.trim() || '';
+            const wordText = editForm.word.trim();
+            const newWordKey = normalizeWord(wordText);
+            const meaningText = editForm.meaning_cn.trim();
+            const exampleText = editForm.example.trim();
+            const usagePromptCn = editForm.usage_prompt_cn?.trim() || '';
+
+            throwOnError(await supabase
+                .from('custom_words')
+                .update({
+                    word: wordText,
+                    meaning_cn: meaningText,
+                    phonetic: editForm.phonetic || '',
+                    example: exampleText,
+                })
+                .eq('id', editingWord.id)
+                .eq('user_id', user.id));
+
+            await migrateWordReferences(oldWordKey, newWordKey);
+            if (oldMeaningText && oldMeaningText !== meaningText) {
+                await clearUsageExerciseCache(wordText, oldMeaningText);
+            }
 
             if (isValidUsageExercise({
                 prompt_cn: usagePromptCn,
@@ -290,26 +515,36 @@ export default function WordlistPage() {
                 word: wordText,
                 meaningCn: meaningText,
             })) {
-                await supabase.from('user_usage_exercises').upsert({
-                    user_id: user.id,
-                    word: wordText.toLowerCase(),
-                    meaning_cn: meaningText,
-                    prompt_cn: usagePromptCn,
-                    reference_answer_en: exampleText,
-                    updated_at: new Date().toISOString(),
-                }, { onConflict: 'user_id,word,meaning_cn' });
+                await cacheUsageExercise(wordText, meaningText, exampleText, usagePromptCn);
+            } else {
+                await clearUsageExerciseCache(wordText, meaningText);
             }
 
-            setShowAddWord(false);
-            setAddWordInput('');
-            setGeneratedWord(null);
-            if (selectedList === targetListId) {
-                loadWords({ id: targetListId, name: selectedListName }, false);
-            }
+            closeEditWord();
+            await loadWords({ id: selectedList, name: selectedListName }, false);
         } catch (err) {
-            setGenError(err.message);
+            setEditError(err.message);
         }
+
         setSaving(false);
+    };
+
+    const handleDeleteWord = async (word, event) => {
+        event.stopPropagation();
+        if (!window.confirm(`确定删除“${word.word}”吗？学习进度不会被删除。`)) return;
+
+        setSelectionError('');
+        try {
+            throwOnError(await supabase
+                .from('custom_words')
+                .delete()
+                .eq('id', word.id)
+                .eq('user_id', user.id));
+            setSelectedWordIds(ids => ids.filter(id => id !== word.id));
+            await loadWords({ id: selectedList, name: selectedListName }, false);
+        } catch (err) {
+            setSelectionError(err.message);
+        }
     };
 
     // CSV Import
@@ -514,6 +749,16 @@ export default function WordlistPage() {
                                                         {status}
                                                     </div>
                                                 )}
+                                                {selectedListSource === 'custom' && (
+                                                    <div className="word-actions" onClick={e => e.stopPropagation()}>
+                                                        <button className="word-action-btn" onClick={(e) => openEditWord(w, e)} title="编辑">
+                                                            编辑
+                                                        </button>
+                                                        <button className="word-action-btn danger" onClick={(e) => handleDeleteWord(w, e)} title="删除">
+                                                            删除
+                                                        </button>
+                                                    </div>
+                                                )}
                                             </div>
                                         );
                                     })}
@@ -602,11 +847,11 @@ export default function WordlistPage() {
 
             {/* Add Word Modal */}
             {showAddWord && (
-                <div className="modal-overlay" onClick={() => setShowAddWord(false)}>
+                <div className="modal-overlay" onClick={resetAddWordModal}>
                     <div className="modal" onClick={e => e.stopPropagation()}>
                         <div className="modal-header">
                             <h2>添加生词</h2>
-                            <button className="btn-close" onClick={() => setShowAddWord(false)}>✕</button>
+                            <button className="btn-close" onClick={resetAddWordModal}>✕</button>
                         </div>
                         <div className="modal-body">
                             <div className="gen-input-row">
@@ -628,6 +873,30 @@ export default function WordlistPage() {
                             </div>
 
                             {genError && <div className="form-error">{genError}</div>}
+
+                            {spellingSuggestion && (
+                                <div className="spelling-check">
+                                    <div className="spelling-check-title">可能是拼写错误</div>
+                                    <p>
+                                        你输入的是 <strong>{spellingSuggestion.originalWord}</strong>，
+                                        AI 建议检查为 <strong>{spellingSuggestion.suggestedWord}</strong>。
+                                    </p>
+                                    <div className="spelling-check-actions">
+                                        <button
+                                            className="btn-primary"
+                                            onClick={() => confirmSpellingSuggestion(true)}
+                                        >
+                                            改用 {spellingSuggestion.suggestedWord}
+                                        </button>
+                                        <button
+                                            className="btn-secondary"
+                                            onClick={() => confirmSpellingSuggestion(false)}
+                                        >
+                                            仍保存 {spellingSuggestion.originalWord}
+                                        </button>
+                                    </div>
+                                </div>
+                            )}
 
                             {generatedWord && (
                                 <div className="gen-form">
@@ -674,12 +943,81 @@ export default function WordlistPage() {
                                     <button
                                         className="btn-primary"
                                         onClick={handleSaveWord}
-                                        disabled={saving}
+                                        disabled={saving || !generatedWord.word.trim()}
                                     >
                                         {saving ? '保存中...' : '保存到生词本'}
                                     </button>
                                 </div>
                             )}
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* Edit Word Modal */}
+            {editingWord && editForm && (
+                <div className="modal-overlay" onClick={closeEditWord}>
+                    <div className="modal" onClick={e => e.stopPropagation()}>
+                        <div className="modal-header">
+                            <h2>编辑生词</h2>
+                            <button className="btn-close" onClick={closeEditWord}>✕</button>
+                        </div>
+                        <div className="modal-body">
+                            {editError && <div className="form-error">{editError}</div>}
+                            <div className="gen-form">
+                                <div className="gen-field">
+                                    <label>英文</label>
+                                    <input
+                                        type="text"
+                                        value={editForm.word}
+                                        onChange={e => setEditForm({ ...editForm, word: e.target.value })}
+                                    />
+                                </div>
+                                <div className="gen-field">
+                                    <label>中文释义</label>
+                                    <input
+                                        type="text"
+                                        value={editForm.meaning_cn}
+                                        onChange={e => setEditForm({ ...editForm, meaning_cn: e.target.value })}
+                                    />
+                                </div>
+                                <div className="gen-field">
+                                    <label>音标</label>
+                                    <input
+                                        type="text"
+                                        value={editForm.phonetic}
+                                        onChange={e => setEditForm({ ...editForm, phonetic: e.target.value })}
+                                    />
+                                </div>
+                                <div className="gen-field">
+                                    <label>例句</label>
+                                    <input
+                                        type="text"
+                                        value={editForm.example}
+                                        onChange={e => setEditForm({ ...editForm, example: e.target.value })}
+                                    />
+                                </div>
+                                <div className="gen-field">
+                                    <label>场景中文句</label>
+                                    <input
+                                        type="text"
+                                        value={editForm.usage_prompt_cn}
+                                        onChange={e => setEditForm({ ...editForm, usage_prompt_cn: e.target.value })}
+                                    />
+                                </div>
+                                <div className="modal-actions">
+                                    <button
+                                        className="btn-primary"
+                                        onClick={handleSaveEditWord}
+                                        disabled={saving || !editForm.word.trim()}
+                                    >
+                                        {saving ? '保存中...' : '保存修改'}
+                                    </button>
+                                    <button className="btn-secondary" onClick={closeEditWord} disabled={saving}>
+                                        取消
+                                    </button>
+                                </div>
+                            </div>
                         </div>
                     </div>
                 </div>

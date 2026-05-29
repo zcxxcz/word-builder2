@@ -9,7 +9,7 @@
 - 新学从词表页发起，可按整词表、单元或逐词勾选选择；完成新词复习后才写入长期学习进度。
 - 学习页不提供选择题：先回想中文释义，再输入英文拼写；复习型阶段增加中文场景句英译，要求用到目标词。
 - 学习中切换应用、刷新页面、关闭浏览器或换浏览器登录同一账号后，可恢复未完成的学习会话。
-- 词表页支持内置词表、自定义词表、CSV 导入、新学选择，以及 AI 生成释义/音标/例句。
+- 词表页支持内置词表、自定义词表、CSV 导入、新学选择、自定义词编辑/删除，以及带拼写确认的 AI 生词内容生成。
 - 支持经典主题和 Florr 前端主题；Florr 主题只改变展示，不改变学习流程、SRS 或数据结构。
 - 进度页展示已学词数、L3 掌握词数、本周学习天数、等级分布和最近学习记录。
 - 我的页支持主题切换、学习设置、TTS 设置、使用手册、JSON 导入导出和清空个人数据。
@@ -71,7 +71,7 @@ supabase functions deploy deepseek-proxy
 supabase secrets set DEEPSEEK_API_KEY=<your-key>
 ```
 
-Edge Function 会读取认证用户、检查 AI 调用限制、调用 DeepSeek，并把计数写回 `user_settings`，同时写入不含 prompt、答案和密钥的轻量 AI 调用事件。生词内容生成每日 30 次；场景题生成和场景题批改各每日 200 次。
+Edge Function 会读取认证用户、检查 AI 调用限制、调用 DeepSeek，并把计数写回 `user_settings`，同时写入不含 prompt、答案和密钥的轻量 AI 调用事件。生词内容生成会返回疑似拼写错误提示，由前端让用户确认是否改用建议词；每日 30 次。场景题生成和场景题批改各每日 200 次。
 
 轻量事件日志建议保留 90 天，可定期在 SQL Editor 执行：
 
@@ -115,9 +115,9 @@ npm run deploy   # 构建并发布到 gh-pages
 主要表由 `supabase/migration.sql` 定义：
 
 - `built_in_wordlists`、`built_in_words`：共享内置词表，认证用户只读。
-- `custom_wordlists`、`custom_words`：用户自定义词表和词汇。
-- `user_word_state`：按 `user_id + word` 唯一记录学习等级、复习时间和错误统计。
-- `user_usage_exercises`：按用户缓存中文场景句和英文参考答案。
+- `custom_wordlists`、`custom_words`：用户自定义词表和词汇；自定义词可编辑/删除。
+- `user_word_state`：按 `user_id + word` 唯一记录学习等级、复习时间和错误统计；编辑自定义词英文时迁移对应进度。
+- `user_usage_exercises`：按用户缓存中文场景句和英文参考答案；编辑自定义词英文或场景内容时同步缓存。
 - `sessions`：学习记录和战报数据。
 - `user_settings`：学习参数、TTS 参数、生词生成计数和场景题 AI 计数。
 - `active_study_sessions`：用户级临时学习恢复点；完成、主动退出或清空数据时删除，不纳入 JSON 导出。

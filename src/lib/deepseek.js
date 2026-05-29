@@ -24,11 +24,15 @@ function normalizeWord(word) {
     return word.trim().toLowerCase();
 }
 
+function isTrue(value) {
+    return value === true || value === 'true';
+}
+
 /**
  * Call the Supabase Edge Function to generate word content via DeepSeek API
  * The API key is securely stored on the server side.
  * @param {string} word - English word to generate content for
- * @returns {Promise<{meaning_cn: string, phonetic: string, example: string, usage_prompt_cn: string}>}
+ * @returns {Promise<{meaning_cn: string, phonetic: string, example: string, usage_prompt_cn: string, input_word: string, canonical_word: string, spelling_suspected: boolean}>}
  */
 export async function generateWordContent(word) {
     // Check daily limit (30 per day) - quick UI feedback
@@ -59,6 +63,9 @@ export async function generateWordContent(word) {
         incrementDailyCount('deepseek_gen');
 
         return {
+            input_word: data.input_word || word,
+            canonical_word: data.canonical_word || word,
+            spelling_suspected: isTrue(data.spelling_suspected),
             meaning_cn: data.meaning_cn || '未找到释义',
             phonetic: data.phonetic || '',
             example: data.example || '',

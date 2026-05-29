@@ -259,6 +259,9 @@ score 为 0-1 的数字；passed 只有在 score >= 0.7 且目标词用法正确
             const prompt = `你是一个面向中国初一学生（12-13岁）的英语词典助手。请为英文单词 "${word}" 生成以下信息，严格使用JSON格式输出：
 
 {
+  "input_word": "${word}",
+  "canonical_word": "如果输入无明显拼写错误，填原词；如果高度确定是拼写错误，填建议的标准拼写",
+  "spelling_suspected": false,
   "meaning_cn": "中文释义（每条≤12个汉字，最多3条义项，用;分隔，避免生僻和学术表达）",
   "phonetic": "国际音标（IPA格式，如 /ˈæp.əl/）",
   "example": "1个英文例句（句长6-12个词，不使用复杂从句，必须包含目标词原形）",
@@ -268,6 +271,8 @@ score 为 0-1 的数字；passed 只有在 score >= 0.7 且目标词用法正确
 注意：
 - 中文释义要简短、常用、适合初中生
 - 例句要贴近初中生日常生活
+- 只有在高度确定输入是拼写错误时，spelling_suspected 才返回 true；不确定、专有名词、短语、英美拼写差异、词形变化都返回 false
+- 如果 spelling_suspected 为 true，meaning_cn、phonetic、example、usage_prompt_cn 都按 canonical_word 生成；不要静默把 input_word 当成正确词
 - usage_prompt_cn 必须和 example 语义一致
 - usage_prompt_cn 可以是陈述句或自然问句，但不能用“什么、哪个、某个、东西、事物”等占位词替代目标词含义
 - 坏例（insight）：她的什么帮助我们解决了这个问题？
@@ -276,6 +281,9 @@ score 为 0-1 的数字；passed 只有在 score >= 0.7 且目标词用法正确
 
             const content = await callDeepSeek(deepseekKey, prompt, 520);
             parsed = extractJson(content, {
+                input_word: word,
+                canonical_word: word,
+                spelling_suspected: false,
                 meaning_cn: '未找到释义',
                 phonetic: '',
                 example: '',
