@@ -1,4 +1,5 @@
 import { supabase } from './supabase';
+import { isValidUsageExercise } from '../utils/usageExercise';
 
 // Simple daily counter using localStorage (UI-level quick check; server also enforces limit)
 function checkDailyLimit(key = 'deepseek_gen', limit = 30) {
@@ -21,28 +22,6 @@ function incrementDailyCount(key = 'deepseek_gen') {
 
 function normalizeWord(word) {
     return word.trim().toLowerCase();
-}
-
-const USAGE_PROMPT_META_PATTERNS = [
-    /下面的英文/,
-    /英文句子/,
-    /英文.*翻译.*中文/,
-    /翻译.*成中文/,
-    /译成中文/,
-    /请翻译/,
-    /参考答案/,
-    /目标词/,
-];
-
-export function isValidUsageExercise(exercise) {
-    const promptCn = exercise?.prompt_cn?.trim() || '';
-    const referenceAnswerEn = exercise?.reference_answer_en?.trim() || '';
-
-    if (!promptCn || !referenceAnswerEn) return false;
-    if (!/[\u4e00-\u9fff]/.test(promptCn)) return false;
-    if (/[A-Za-z]/.test(promptCn)) return false;
-    if (!/[A-Za-z]/.test(referenceAnswerEn)) return false;
-    return !USAGE_PROMPT_META_PATTERNS.some(pattern => pattern.test(promptCn));
 }
 
 /**
@@ -103,6 +82,7 @@ export async function getUsageExercise(word, meaningCn) {
 
     const wordKey = normalizeWord(word);
     const meaningKey = meaningCn?.trim() || '';
+    const exerciseContext = { word, meaningCn: meaningKey };
 
     const { data: cached, error: cacheError } = await supabase
         .from('user_usage_exercises')
@@ -113,7 +93,7 @@ export async function getUsageExercise(word, meaningCn) {
         .maybeSingle();
 
     if (cacheError) throw cacheError;
-    if (isValidUsageExercise(cached)) {
+    if (isValidUsageExercise(cached, exerciseContext)) {
         return cached;
     }
 
@@ -126,7 +106,7 @@ export async function getUsageExercise(word, meaningCn) {
         .limit(5);
 
     if (wordCacheError) throw wordCacheError;
-    const reusableExercise = wordCached?.find(isValidUsageExercise);
+    const reusableExercise = wordCached?.find(exercise => isValidUsageExercise(exercise, exerciseContext));
     if (reusableExercise) {
         return reusableExercise;
     }
@@ -157,7 +137,7 @@ export async function getUsageExercise(word, meaningCn) {
         reference_answer_en: data.reference_answer_en || '',
     };
 
-    if (!isValidUsageExercise(exercise)) {
+    if (!isValidUsageExercise(exercise, exerciseContext)) {
         throw new Error('场景题生成结果不符合要求，请重试');
     }
 

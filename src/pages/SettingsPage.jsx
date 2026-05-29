@@ -6,6 +6,7 @@ import { THEMES, useThemeStore } from '../stores/themeStore';
 import { supabase } from '../lib/supabase';
 import { REVIEW_BATCH_LIMIT } from '../utils/constants';
 import { getToday } from '../utils/srs';
+import { isValidUsageExercise } from '../utils/usageExercise';
 import './SettingsPage.css';
 
 export default function SettingsPage() {
@@ -142,13 +143,18 @@ export default function SettingsPage() {
                 // Import cached usage exercises
                 if (data.user_usage_exercises?.length > 0) {
                     for (const exercise of data.user_usage_exercises) {
-                        await supabase.from('user_usage_exercises').upsert({
-                            user_id: user.id,
+                        if (isValidUsageExercise(exercise, {
                             word: exercise.word,
-                            meaning_cn: exercise.meaning_cn || '',
-                            prompt_cn: exercise.prompt_cn,
-                            reference_answer_en: exercise.reference_answer_en,
-                        }, { onConflict: 'user_id,word,meaning_cn' });
+                            meaningCn: exercise.meaning_cn || '',
+                        })) {
+                            await supabase.from('user_usage_exercises').upsert({
+                                user_id: user.id,
+                                word: exercise.word,
+                                meaning_cn: exercise.meaning_cn || '',
+                                prompt_cn: exercise.prompt_cn,
+                                reference_answer_en: exercise.reference_answer_en,
+                            }, { onConflict: 'user_id,word,meaning_cn' });
+                        }
                     }
                 }
 

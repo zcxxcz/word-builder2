@@ -4,8 +4,9 @@ import { useAuthStore } from '../stores/authStore';
 import { useSettingsStore } from '../stores/settingsStore';
 import { THEMES, useThemeStore } from '../stores/themeStore';
 import { supabase } from '../lib/supabase';
-import { generateWordContent, isValidUsageExercise } from '../lib/deepseek';
+import { generateWordContent } from '../lib/deepseek';
 import { FLORR_AREAS, getFlorrRarity, isFlorrWordlist } from '../utils/florrTheme';
+import { isValidUsageExercise } from '../utils/usageExercise';
 import './WordlistPage.css';
 
 const normalizeWord = (word) => (word || '').trim().toLowerCase();
@@ -285,6 +286,9 @@ export default function WordlistPage() {
             if (isValidUsageExercise({
                 prompt_cn: usagePromptCn,
                 reference_answer_en: exampleText,
+            }, {
+                word: wordText,
+                meaningCn: meaningText,
             })) {
                 await supabase.from('user_usage_exercises').upsert({
                     user_id: user.id,
