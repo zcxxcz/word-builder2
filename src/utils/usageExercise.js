@@ -49,6 +49,7 @@ function addMeaningToken(tokens, token) {
 
 function getMeaningTokens(meaningCn) {
     const tokens = new Set();
+    const normalizedTokens = [];
     const parts = String(meaningCn || '')
         .replace(/（[^）]*）|\([^)]*\)/g, '')
         .split(/[;；,，、/|｜\s]+/);
@@ -57,6 +58,7 @@ function getMeaningTokens(meaningCn) {
         const token = normalizeMeaningToken(part);
         if (!token) return;
 
+        normalizedTokens.push(token);
         addMeaningToken(tokens, token);
 
         if (token.length >= 3) {
@@ -69,6 +71,18 @@ function getMeaningTokens(meaningCn) {
             addMeaningToken(tokens, token.slice(-3));
         }
     });
+
+    const firstCharCounts = normalizedTokens.reduce((counts, token) => {
+        const firstChar = token[0];
+        if (firstChar && !CN_STOP_TOKENS.has(firstChar)) {
+            counts.set(firstChar, (counts.get(firstChar) || 0) + 1);
+        }
+        return counts;
+    }, new Map());
+
+    for (const [firstChar, count] of firstCharCounts.entries()) {
+        if (count >= 2) addMeaningToken(tokens, firstChar);
+    }
 
     return [...tokens];
 }

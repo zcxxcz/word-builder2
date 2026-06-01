@@ -178,9 +178,9 @@
 - 错误：显示正确拼写，并要求至少再输入一次正确拼写（强化纠正）
 
 #### Step C：场景应用（无选项）
-- 展示目标词/短语、中文释义和系统生成的中文场景句
+- 展示目标词/短语、中文释义和系统生成的中文场景句；每个词缓存场景 A/B 两题，单次只练一题，并在后续复习中轮换
 - 学生输入完整英文句子，必须自然用到目标词/短语，允许根据语境变形
-- DeepSeek AI 按语义、语法可理解度、目标词用法综合批改，并展示中文反馈和参考答案
+- DeepSeek AI 按“目标词优先”批改：目标词或合理变形用对且核心场景可理解时通过；非目标词相关的小语法、搭配或自然度问题只展示反馈和更自然参考答案，不进入回流
 - AI 生成或批改失败时允许暂时跳过；跳过不算错，也不更新该词等级
 
 Step A/B 支持在电脑上按 **Enter** 进入下一步；Step C 支持 **Ctrl + Enter** 提交。
@@ -220,7 +220,7 @@ Step A/B 支持在电脑上按 **Enter** 进入下一步；Step C 支持 **Ctrl 
 #### 9.1.2 自定义词表管理
 - 创建自定义词表（名称）
 - 手动添加词（见 9.2 智能生词生成）
-- 编辑自定义词：支持修改 word、meaning_cn、phonetic、example、场景中文句；当 word 变化时同步迁移该用户按 word 记录的学习进度和场景题缓存
+- 编辑自定义词：支持修改 word、meaning_cn、phonetic、example、场景 A/B 中文句和英文参考答案；当 word 变化时同步迁移该用户按 word 记录的学习进度和场景题缓存
 - 删除自定义词：只删除词表中的词条，不删除该 word 已产生的学习进度
 - CSV 导入：
   - 上传 CSV → 解析 → 预览 → 导入为新词表
@@ -247,16 +247,19 @@ Step A/B 支持在电脑上按 **Enter** 进入下一步；Step C 支持 **Ctrl 
   - 句长 6–12 个词
   - 不使用复杂从句结构
   - 必须包含目标词（优先原形）
-- 场景中文句：
-  - 添加生词生成例句时同步生成中文翻译
-  - 保存生词时缓存为后续场景应用题，避免学习时再次生成
+- 场景应用题：
+  - 添加生词生成例句时同步生成场景 A 的中文题面和英文参考答案
+  - 场景 B 可由用户编辑填写，也可在后续练习时懒生成
+  - 生活场景和学校场景都可以出现，但 AI 生成应避免长期偏向学校，尽量在家庭、朋友、课堂、校园活动、运动、出行、购物、餐厅、天气、兴趣、节日、社区、数字生活等语境间自然分布
+  - 如果 AI 返回的场景题不符合前端校验要求，系统自动重新生成；多次失败且没有旧题可用时才允许暂时跳过
+  - 保存生词时缓存有效场景题，避免学习时重复生成已有题
 - 失败兜底：
   - 生成失败时仍展示可编辑表单，用户可手动填写后保存
 
 #### 9.2.3 页面交互（添加生词）
 - 输入英文 → 点击"✨ 生成"
 - 如果 AI 高度确定输入疑似拼写错误，先展示建议拼写，由用户选择"改用建议词"或"仍保存原输入"；系统不得静默自动改词入库
-- 生成完成展示可编辑表单：word、meaning_cn、phonetic、example、场景中文句
+- 生成完成展示可编辑表单：word、meaning_cn、phonetic、example、场景 A/B 中文句和英文参考答案
 - 保存到"生词本"（默认自定义词表，自动创建）
 
 #### 9.2.4 限流策略
@@ -286,9 +289,9 @@ Step A/B 支持在电脑上按 **Enter** 进入下一步；Step C 支持 **Ctrl 
     - 输入框 + 提交（Enter 或按钮）
     - 对错反馈 + 错误纠正（至少输入一次正确）
   - Step C 场景应用卡：
-    - 目标词/短语 + 中文场景句
-    - 输入完整英文句子 + AI 批改
-    - 展示反馈、参考答案，未通过进入当天回流；暂时跳过视为本轮未完成，不升级也不降级
+    - 目标词/短语 + 当前轮换到的中文场景句
+  - 输入完整英文句子 + AI 批改
+  - 展示反馈、参考答案；只有目标词缺失/用错、核心场景明显无关或英文不可理解时才未通过并进入当天回流；暂时跳过视为本轮未完成，不升级也不降级
 - 错词回流：
   - 当天错的词加入回流队列，学习末尾出现（最多 relapse_cap）
   - 回想或拼写失败的词回流时重做回想、拼写、场景应用；仅场景失败且前两项通过时只补场景应用
@@ -337,8 +340,8 @@ Step A/B 支持在电脑上按 **Enter** 进入下一步；Step C 支持 **Ctrl 
 | `built_in_words` | 内置词汇 | id, wordlist_id, word, meaning_cn, unit, phonetic, example |
 | `custom_wordlists` | 自定义词表（用户级） | id, user_id, name, description |
 | `custom_words` | 自定义词汇（用户级） | id, user_id, wordlist_id, word, meaning_cn, phonetic, example |
-| `user_word_state` | 学习进度（user_id + word 唯一） | level, next_review_at, last_seen_at, wrong_count, correct_streak |
-| `user_usage_exercises` | 场景应用题缓存（用户级） | user_id, word, meaning_cn, prompt_cn, reference_answer_en |
+| `user_word_state` | 学习进度（user_id + word 唯一） | level, next_review_at, last_seen_at, wrong_count, correct_streak, next_usage_variant_index |
+| `user_usage_exercises` | 场景应用题缓存（用户级） | user_id, word, meaning_cn, variant_index, prompt_cn, reference_answer_en |
 | `sessions` | 学习记录 | date, new_count, review_count, spelling_accuracy, level_ups, duration_seconds, hardest_word |
 | `user_settings` | 用户设置 | daily_new, review_cap, relapse_cap, tts_enabled, tts_rate, AI 计数字段 |
 | `active_study_sessions` | 未完成学习恢复点（用户级，临时数据） | user_id, status, session_type, snapshot |
@@ -348,7 +351,7 @@ Step A/B 支持在电脑上按 **Enter** 进入下一步；Step C 支持 **Ctrl 
 ### 10.2 导入导出
 - 导出 JSON：包含 user_word_state、sessions、custom_wordlists、custom_words、user_usage_exercises、user_settings
 - 未完成学习恢复点和轻量事件为运营/临时数据，不纳入 JSON 导出
-- 导入 JSON：按表 upsert（word_state 按 user_id+word 合并，词表新建导入）
+- 导入 JSON：按表 upsert（word_state 按 user_id+word 合并，词表新建导入；旧备份缺少 `variant_index` 的场景题按场景 A 导入）
 
 ---
 
@@ -405,12 +408,12 @@ Step A/B 支持在电脑上按 **Enter** 进入下一步；Step C 支持 **Ctrl 
 1. 外研版词表可浏览（按册→单元→词），能从词表/单元/逐词选择新学任务
 2. 添加生词仅输入英文即可生成中文释义/音标/例句，且可编辑并保存
 3. 添加生词时如果 AI 高度确定疑似拼写错误，必须先由用户确认是否改用建议词，不得静默自动纠正后入库
-4. 自定义词表中的词条可编辑/删除；编辑英文拼写时保留并迁移该用户对应的学习进度和场景题缓存，删除词条不删除学习进度
+4. 自定义词表中的词条可编辑/删除；编辑英文拼写时保留并迁移该用户对应的学习进度和场景 A/B 缓存，删除词条不删除学习进度
 5. 学习过程无选择题：意思回想+自评，拼写必须打字
 6. 拼写错误必须提示正确答案并至少纠正一次，且进入当天回流
 7. SRS 生效：next_review 随表现正确变化
 8. 新学完成后自动发起一轮复习，体验与到期复习一致
-9. 复习型阶段包含场景应用题，三项均通过才升级；场景题未通过进入当天回流
+9. 复习型阶段包含场景应用题，三项均通过才升级；场景题未通过进入当天回流；同一词的场景 A/B 在后续练习中轮换
 10. 今日页能显示全部到期复习数，且单次复习只取 review_cap 限制内的批次
 11. 今日战报与进度页数据正确
 12. 多设备同步：同一账号在不同浏览器登录后数据一致

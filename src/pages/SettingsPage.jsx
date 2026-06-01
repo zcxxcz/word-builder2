@@ -4,9 +4,11 @@ import { useAuthStore } from '../stores/authStore';
 import { useSettingsStore } from '../stores/settingsStore';
 import { THEMES, useThemeStore } from '../stores/themeStore';
 import { supabase } from '../lib/supabase';
+import { upsertUsageExercise } from '../lib/usageExerciseCache';
 import { REVIEW_BATCH_LIMIT } from '../utils/constants';
 import { getToday } from '../utils/srs';
 import { isValidUsageExercise } from '../utils/usageExercise';
+import { normalizeUsageVariantIndex } from '../utils/usageVariant';
 import './SettingsPage.css';
 
 export default function SettingsPage() {
@@ -147,13 +149,14 @@ export default function SettingsPage() {
                             word: exercise.word,
                             meaningCn: exercise.meaning_cn || '',
                         })) {
-                            await supabase.from('user_usage_exercises').upsert({
-                                user_id: user.id,
+                            await upsertUsageExercise({
+                                userId: user.id,
                                 word: exercise.word,
-                                meaning_cn: exercise.meaning_cn || '',
-                                prompt_cn: exercise.prompt_cn,
-                                reference_answer_en: exercise.reference_answer_en,
-                            }, { onConflict: 'user_id,word,meaning_cn' });
+                                meaningCn: exercise.meaning_cn || '',
+                                variantIndex: normalizeUsageVariantIndex(exercise.variant_index),
+                                promptCn: exercise.prompt_cn,
+                                referenceAnswerEn: exercise.reference_answer_en,
+                            });
                         }
                     }
                 }

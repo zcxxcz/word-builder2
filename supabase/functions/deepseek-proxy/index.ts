@@ -190,17 +190,32 @@ Deno.serve(async (req) => {
 
         if (action === 'generate_usage_exercise') {
             const meaningCn = String(body.meaning_cn || '').trim();
+            const variantIndex = Number(body.variant_index) === 1 ? 1 : 0;
+            const existingPromptCn = String(body.existing_prompt_cn || '').trim();
+            const existingReferenceAnswer = String(body.existing_reference_answer_en || '').trim();
+            const retryAttempt = Number(body.retry_attempt || 1);
+            const previousInvalidPromptCn = String(body.previous_invalid_prompt_cn || '').trim();
+            const previousInvalidReferenceAnswer = String(body.previous_invalid_reference_answer_en || '').trim();
+            const diversityHint = existingPromptCn
+                ? `\n已有另一个场景题：${existingPromptCn}\n已有英文参考答案：${existingReferenceAnswer || '无'}\n这次生成场景 ${variantIndex === 0 ? 'A' : 'B'}，必须和已有场景在语境、句式或语法点上明显不同。如果已有题偏学校/课堂/作业，这次优先换成生活场景；如果已有题偏生活，这次可以使用学校或其他不同生活场景。`
+                : `\n这次生成场景 ${variantIndex === 0 ? 'A' : 'B'}。`;
+            const retryHint = retryAttempt > 1
+                ? `\n这是第 ${retryAttempt} 次重新生成。上一次结果未通过前端校验：\n上次中文题面：${previousInvalidPromptCn || '空'}\n上次英文参考答案：${previousInvalidReferenceAnswer || '空'}\n请修正：中文题面必须是纯中文真实场景句，明确包含目标词中文含义或清楚语义；英文参考答案必须自然使用目标词/短语或合理变形。不要输出元指令、不要暴露英文目标词、不要用占位词遮住目标含义。`
+                : '';
             const prompt = `你是一个面向中国初一学生（12-13岁）的英语老师。请为英文单词或短语 "${word}" 生成一个真实使用场景英译题，严格使用JSON格式输出：
 
 {
-  "prompt_cn": "中文题面。必须贴近初中生日常、家庭、校园或常见生活场景，句子自然完整，可以是陈述句或自然问句，不出现英文目标词。",
+  "prompt_cn": "中文题面。必须贴近初中生日常真实语境，句子自然完整，可以是陈述句或自然问句，不出现英文目标词。",
   "reference_answer_en": "英文参考答案。必须自然使用目标词或短语，允许根据语境使用正确时态、单复数或词形变化。"
 }
 
 已知中文释义：${meaningCn || '无'}
+${diversityHint}
+${retryHint}
 
 要求：
 - 中文句子长度 10-28 个汉字，适合初一学生理解
+- 生活场景和学校场景都可以使用，但不要长期偏向学校；请在家庭、朋友、课堂、校园活动、运动、出行、购物、餐厅、天气、兴趣、节日、社区、数字生活等场景之间自然分布
 - 中文题面必须直接写出目标词的中文含义或清楚语义，不要让学生猜目标词
 - 禁止用“什么、哪个、某个、东西、事物”等占位词替代目标词含义
 - 允许自然问句，例如 name：你叫什么名字？
@@ -225,7 +240,7 @@ Deno.serve(async (req) => {
                 return jsonResponse({ error: '请提供场景题、参考答案和学生答案' }, 400);
             }
 
-            const prompt = `你是一个严格但鼓励学生的初一英语老师。请批改学生用目标词完成中文场景句英译的答案，严格使用JSON格式输出：
+            const prompt = `你是一个严格但鼓励学生的初一英语老师。这个练习的主要目标是判断学生能否把目标词迁移到真实句子里使用，不是严格整句翻译考试。请批改学生用目标词完成中文场景句英译的答案，严格使用JSON格式输出：
 
 目标词或短语：${word}
 中文释义：${meaningCn || '无'}
@@ -233,10 +248,11 @@ Deno.serve(async (req) => {
 参考答案：${referenceAnswer}
 学生答案：${answerEn}
 
-请判断学生答案是否：
-1. 基本表达了中文句子的核心意思；
-2. 正确使用了目标词/短语，允许必要的时态、单复数、第三人称、过去式、现在分词等合理变形；
-3. 语法错误不影响理解时可以通过，但目标词用法错误不能通过。
+请按“目标词优先”的口径判断：
+1. 如果学生正确使用了目标词/短语或其合理变形，并且中文场景的核心意思大致可理解，即使有冠词、介词、搭配、词序或非目标词相关的小语法错误，也应 passed=true；
+2. 如果目标词缺失、目标词含义/词性/搭配明显用错、答案和中文场景明显无关，或英文碎片严重到不可理解，应 passed=false；
+3. 非目标词相关的小问题只在 feedback_cn 和 corrected_answer_en 里温和指出，不要因此判失败或让学生回流；
+4. 目标词正确但表达粗糙时 score 给 0.75-0.85；目标词正确且句子自然时给 0.9 以上；目标词错误通常低于 0.7。
 
 {
   "passed": true,
@@ -245,7 +261,7 @@ Deno.serve(async (req) => {
   "corrected_answer_en": "更自然或修正后的英文答案"
 }
 
-score 为 0-1 的数字；passed 只有在 score >= 0.7 且目标词用法正确时为 true。
+score 为 0-1 的数字；passed 主要由目标词是否用对和核心场景是否可理解决定。
 只输出JSON，不要其他内容`;
 
             const content = await callDeepSeek(deepseekKey, prompt, 420);

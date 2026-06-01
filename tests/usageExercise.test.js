@@ -33,6 +33,26 @@ test('accepts natural questions when the target meaning is explicit', () => {
     }), true);
 });
 
+test('accepts gap words when the target meaning is explicit elsewhere', () => {
+    assert.equal(isValidUsageExercise({
+        prompt_cn: '妈妈问我晚饭想吃什么，我说想吃一碗热腾腾的面条。',
+        reference_answer_en: 'I want to eat a bowl of hot noodles.',
+    }, {
+        word: 'noodle',
+        meaningCn: '面条',
+    }), true);
+});
+
+test('accepts natural Chinese paraphrases of related meanings', () => {
+    assert.equal(isValidUsageExercise({
+        prompt_cn: '他决定把旧书捐给图书馆。',
+        reference_answer_en: 'He decided to donate old books to the library.',
+    }, {
+        word: 'donate',
+        meaningCn: '捐赠;捐款;捐助',
+    }), true);
+});
+
 test('rejects meta translation prompts', () => {
     assert.equal(isValidUsageExercise({
         prompt_cn: '请将下面的英文句子翻译成中文：',

@@ -54,6 +54,7 @@ CREATE TABLE IF NOT EXISTS user_word_state (
   last_seen_at TIMESTAMPTZ,
   wrong_count INTEGER DEFAULT 0,
   correct_streak INTEGER DEFAULT 0,
+  next_usage_variant_index INTEGER NOT NULL DEFAULT 0 CHECK (next_usage_variant_index IN (0, 1)),
   created_at TIMESTAMPTZ DEFAULT now(),
   updated_at TIMESTAMPTZ DEFAULT now(),
   UNIQUE(user_id, word)
@@ -100,11 +101,12 @@ CREATE TABLE IF NOT EXISTS user_usage_exercises (
   user_id UUID REFERENCES auth.users(id) ON DELETE CASCADE NOT NULL,
   word TEXT NOT NULL,
   meaning_cn TEXT NOT NULL DEFAULT '',
+  variant_index INTEGER NOT NULL DEFAULT 0 CHECK (variant_index IN (0, 1)),
   prompt_cn TEXT NOT NULL,
   reference_answer_en TEXT NOT NULL,
   created_at TIMESTAMPTZ DEFAULT now(),
   updated_at TIMESTAMPTZ DEFAULT now(),
-  UNIQUE(user_id, word, meaning_cn)
+  UNIQUE(user_id, word, meaning_cn, variant_index)
 );
 
 -- 9. Active Study Sessions (temporary cross-browser resume state)
@@ -124,6 +126,56 @@ ALTER TABLE user_settings ADD COLUMN IF NOT EXISTS last_usage_gen_date DATE;
 ALTER TABLE user_settings ADD COLUMN IF NOT EXISTS daily_usage_grade_count INTEGER DEFAULT 0;
 ALTER TABLE user_settings ADD COLUMN IF NOT EXISTS last_usage_grade_date DATE;
 ALTER TABLE user_settings ALTER COLUMN review_cap SET DEFAULT 10;
+ALTER TABLE user_word_state ADD COLUMN IF NOT EXISTS next_usage_variant_index INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE user_usage_exercises ADD COLUMN IF NOT EXISTS variant_index INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE user_usage_exercises DROP CONSTRAINT IF EXISTS user_usage_exercises_user_id_word_meaning_cn_key;
+
+DELETE FROM user_usage_exercises old_row
+USING user_usage_exercises keep_row
+WHERE old_row.user_id = keep_row.user_id
+  AND old_row.word = keep_row.word
+  AND old_row.meaning_cn = keep_row.meaning_cn
+  AND old_row.variant_index = keep_row.variant_index
+  AND (
+    COALESCE(old_row.updated_at, old_row.created_at) < COALESCE(keep_row.updated_at, keep_row.created_at)
+    OR (
+      COALESCE(old_row.updated_at, old_row.created_at) = COALESCE(keep_row.updated_at, keep_row.created_at)
+      AND old_row.ctid < keep_row.ctid
+    )
+  );
+
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint WHERE conname = 'user_word_state_next_usage_variant_index_check'
+  ) THEN
+    ALTER TABLE user_word_state
+      ADD CONSTRAINT user_word_state_next_usage_variant_index_check
+      CHECK (next_usage_variant_index IN (0, 1));
+  END IF;
+END $$;
+
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint WHERE conname = 'user_usage_exercises_variant_index_check'
+  ) THEN
+    ALTER TABLE user_usage_exercises
+      ADD CONSTRAINT user_usage_exercises_variant_index_check
+      CHECK (variant_index IN (0, 1));
+  END IF;
+END $$;
+
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint WHERE conname = 'user_usage_exercises_user_id_word_meaning_cn_variant_index_key'
+  ) THEN
+    ALTER TABLE user_usage_exercises
+      ADD CONSTRAINT user_usage_exercises_user_id_word_meaning_cn_variant_index_key
+      UNIQUE (user_id, word, meaning_cn, variant_index);
+  END IF;
+END $$;
 
 -- ============================================
 -- Row Level Security (RLS) Policies
@@ -230,6 +282,9 @@ CREATE INDEX IF NOT EXISTS idx_custom_words_wordlist
 
 CREATE INDEX IF NOT EXISTS idx_user_usage_exercises_word
   ON user_usage_exercises(user_id, word);
+
+CREATE INDEX IF NOT EXISTS idx_user_usage_exercises_variant
+  ON user_usage_exercises(user_id, word, meaning_cn, variant_index);
 
 CREATE INDEX IF NOT EXISTS idx_active_study_sessions_user
   ON active_study_sessions(user_id);

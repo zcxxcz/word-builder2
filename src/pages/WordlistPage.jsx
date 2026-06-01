@@ -5,11 +5,15 @@ import { useSettingsStore } from '../stores/settingsStore';
 import { THEMES, useThemeStore } from '../stores/themeStore';
 import { supabase } from '../lib/supabase';
 import { generateWordContent } from '../lib/deepseek';
+import { upsertUsageExercise } from '../lib/usageExerciseCache';
 import { FLORR_AREAS, getFlorrRarity, isFlorrWordlist } from '../utils/florrTheme';
 import { isValidUsageExercise } from '../utils/usageExercise';
+import { normalizeUsageVariantIndex } from '../utils/usageVariant';
 import './WordlistPage.css';
 
 const normalizeWord = (word) => (word || '').trim().toLowerCase();
+const usageVariantIndexes = [0, 1];
+const usageVariantLabels = ['A', 'B'];
 
 export default function WordlistPage() {
     const { user } = useAuthStore();
@@ -224,7 +228,18 @@ export default function WordlistPage() {
         meaning_cn: result.meaning_cn || '',
         phonetic: result.phonetic || '',
         example: result.example || '',
-        usage_prompt_cn: result.usage_prompt_cn || '',
+        usage_exercises: [
+            {
+                variant_index: 0,
+                prompt_cn: result.usage_prompt_cn || '',
+                reference_answer_en: result.example || '',
+            },
+            {
+                variant_index: 1,
+                prompt_cn: '',
+                reference_answer_en: '',
+            },
+        ],
     });
 
     const resetAddWordModal = () => {
@@ -235,21 +250,21 @@ export default function WordlistPage() {
         setGenError('');
     };
 
-    const cacheUsageExercise = async (wordText, meaningText, exampleText, usagePromptCn) => {
+    const cacheUsageExercise = async (wordText, meaningText, referenceAnswerEn, usagePromptCn, variantIndex = 0) => {
         const exercise = {
             prompt_cn: usagePromptCn,
-            reference_answer_en: exampleText,
+            reference_answer_en: referenceAnswerEn,
+            variant_index: normalizeUsageVariantIndex(variantIndex),
         };
 
         if (!isValidUsageExercise(exercise, { word: wordText, meaningCn: meaningText })) return;
 
-        throwOnError(await supabase.from('user_usage_exercises').upsert({
-            user_id: user.id,
+        await upsertUsageExercise({
+            userId: user.id,
             word: normalizeWord(wordText),
-            meaning_cn: meaningText,
+            meaningCn: meaningText,
             ...exercise,
-            updated_at: new Date().toISOString(),
-        }, { onConflict: 'user_id,word,meaning_cn' }));
+        });
     };
 
     const migrateUserWordState = async (oldWordKey, newWordKey) => {
@@ -293,14 +308,18 @@ export default function WordlistPage() {
             .eq('word', newWordKey);
         if (newError) throw newError;
 
-        const newByMeaning = new Map((newExercises || []).map(exercise => [exercise.meaning_cn, exercise]));
+        const getExerciseKey = (exercise) => (
+            `${exercise.meaning_cn}\u0000${normalizeUsageVariantIndex(exercise.variant_index)}`
+        );
+        const newByMeaningAndVariant = new Map((newExercises || []).map(exercise => [getExerciseKey(exercise), exercise]));
 
         for (const exercise of oldExercises) {
-            const existing = newByMeaning.get(exercise.meaning_cn);
+            const variantIndex = normalizeUsageVariantIndex(exercise.variant_index);
+            const existing = newByMeaningAndVariant.get(`${exercise.meaning_cn}\u0000${variantIndex}`);
             if (!existing) {
                 throwOnError(await supabase
                     .from('user_usage_exercises')
-                    .update({ word: newWordKey })
+                    .update({ word: newWordKey, variant_index: variantIndex })
                     .eq('id', exercise.id)
                     .eq('user_id', user.id));
                 continue;
@@ -312,6 +331,7 @@ export default function WordlistPage() {
                     .update({
                         prompt_cn: exercise.prompt_cn,
                         reference_answer_en: exercise.reference_answer_en,
+                        variant_index: variantIndex,
                         updated_at: exercise.updated_at,
                     })
                     .eq('id', existing.id)
@@ -405,7 +425,6 @@ export default function WordlistPage() {
             const wordText = generatedWord.word.trim();
             const meaningText = generatedWord.meaning_cn.trim();
             const exampleText = generatedWord.example.trim();
-            const usagePromptCn = generatedWord.usage_prompt_cn?.trim() || '';
 
             throwOnError(await supabase.from('custom_words').insert({
                 user_id: user.id,
@@ -416,7 +435,15 @@ export default function WordlistPage() {
                 example: exampleText,
             }));
 
-            await cacheUsageExercise(wordText, meaningText, exampleText, usagePromptCn);
+            for (const exercise of generatedWord.usage_exercises || []) {
+                await cacheUsageExercise(
+                    wordText,
+                    meaningText,
+                    exercise.reference_answer_en?.trim() || '',
+                    exercise.prompt_cn?.trim() || '',
+                    exercise.variant_index
+                );
+            }
 
             resetAddWordModal();
             if (selectedList === targetListId) {
@@ -435,7 +462,11 @@ export default function WordlistPage() {
             meaning_cn: word.meaning_cn || '',
             phonetic: word.phonetic || '',
             example: word.example || '',
-            usage_prompt_cn: '',
+            usage_exercises: usageVariantIndexes.map(variantIndex => ({
+                variant_index: variantIndex,
+                prompt_cn: '',
+                reference_answer_en: '',
+            })),
         };
 
         setEditingWord(word);
@@ -447,19 +478,32 @@ export default function WordlistPage() {
 
         const { data, error } = await supabase
             .from('user_usage_exercises')
-            .select('prompt_cn')
+            .select('prompt_cn, reference_answer_en, variant_index')
             .eq('user_id', user.id)
             .eq('word', wordKey)
             .eq('meaning_cn', word.meaning_cn?.trim() || '')
-            .maybeSingle();
+            .order('variant_index', { ascending: true });
 
         if (error) {
             setEditError(error.message);
             return;
         }
 
-        if (data?.prompt_cn) {
-            setEditForm(current => current ? { ...current, usage_prompt_cn: data.prompt_cn } : current);
+        if (data?.length) {
+            setEditForm(current => {
+                if (!current) return current;
+                return {
+                    ...current,
+                    usage_exercises: usageVariantIndexes.map(variantIndex => {
+                        const cached = data.find(exercise => normalizeUsageVariantIndex(exercise.variant_index) === variantIndex);
+                        return {
+                            variant_index: variantIndex,
+                            prompt_cn: cached?.prompt_cn || '',
+                            reference_answer_en: cached?.reference_answer_en || '',
+                        };
+                    }),
+                };
+            });
         }
     };
 
@@ -469,13 +513,19 @@ export default function WordlistPage() {
         setEditError('');
     };
 
-    const clearUsageExerciseCache = async (wordText, meaningText) => {
-        throwOnError(await supabase
+    const clearUsageExerciseCache = async (wordText, meaningText, variantIndex) => {
+        let query = supabase
             .from('user_usage_exercises')
             .delete()
             .eq('user_id', user.id)
             .eq('word', normalizeWord(wordText))
-            .eq('meaning_cn', meaningText));
+            .eq('meaning_cn', meaningText);
+
+        if (variantIndex !== undefined && variantIndex !== null) {
+            query = query.eq('variant_index', normalizeUsageVariantIndex(variantIndex));
+        }
+
+        throwOnError(await query);
     };
 
     const handleSaveEditWord = async () => {
@@ -490,7 +540,6 @@ export default function WordlistPage() {
             const newWordKey = normalizeWord(wordText);
             const meaningText = editForm.meaning_cn.trim();
             const exampleText = editForm.example.trim();
-            const usagePromptCn = editForm.usage_prompt_cn?.trim() || '';
 
             throwOnError(await supabase
                 .from('custom_words')
@@ -508,16 +557,22 @@ export default function WordlistPage() {
                 await clearUsageExerciseCache(wordText, oldMeaningText);
             }
 
-            if (isValidUsageExercise({
-                prompt_cn: usagePromptCn,
-                reference_answer_en: exampleText,
-            }, {
-                word: wordText,
-                meaningCn: meaningText,
-            })) {
-                await cacheUsageExercise(wordText, meaningText, exampleText, usagePromptCn);
-            } else {
-                await clearUsageExerciseCache(wordText, meaningText);
+            for (const exercise of editForm.usage_exercises || []) {
+                const usagePromptCn = exercise.prompt_cn?.trim() || '';
+                const referenceAnswerEn = exercise.reference_answer_en?.trim() || '';
+                const variantIndex = normalizeUsageVariantIndex(exercise.variant_index);
+                if (isValidUsageExercise({
+                    prompt_cn: usagePromptCn,
+                    reference_answer_en: referenceAnswerEn,
+                    variant_index: variantIndex,
+                }, {
+                    word: wordText,
+                    meaningCn: meaningText,
+                })) {
+                    await cacheUsageExercise(wordText, meaningText, referenceAnswerEn, usagePromptCn, variantIndex);
+                } else {
+                    await clearUsageExerciseCache(wordText, meaningText, variantIndex);
+                }
             }
 
             closeEditWord();
@@ -932,14 +987,55 @@ export default function WordlistPage() {
                                             onChange={e => setGeneratedWord({ ...generatedWord, example: e.target.value })}
                                         />
                                     </div>
-                                    <div className="gen-field">
-                                        <label>场景中文句</label>
-                                        <input
-                                            type="text"
-                                            value={generatedWord.usage_prompt_cn || ''}
-                                            onChange={e => setGeneratedWord({ ...generatedWord, usage_prompt_cn: e.target.value })}
-                                        />
-                                    </div>
+                                    {usageVariantIndexes.map(variantIndex => {
+                                        const exercise = generatedWord.usage_exercises?.[variantIndex] || {};
+                                        return (
+                                            <div className="usage-variant-fields" key={variantIndex}>
+                                                <div className="gen-field">
+                                                    <label>场景 {usageVariantLabels[variantIndex]} 中文句</label>
+                                                    <input
+                                                        type="text"
+                                                        value={exercise.prompt_cn || ''}
+                                                        onChange={e => setGeneratedWord({
+                                                            ...generatedWord,
+                                                            usage_exercises: usageVariantIndexes.map(index => index === variantIndex
+                                                                ? {
+                                                                    variant_index: index,
+                                                                    prompt_cn: e.target.value,
+                                                                    reference_answer_en: generatedWord.usage_exercises?.[index]?.reference_answer_en || '',
+                                                                }
+                                                                : {
+                                                                    variant_index: index,
+                                                                    prompt_cn: generatedWord.usage_exercises?.[index]?.prompt_cn || '',
+                                                                    reference_answer_en: generatedWord.usage_exercises?.[index]?.reference_answer_en || '',
+                                                                })
+                                                        })}
+                                                    />
+                                                </div>
+                                                <div className="gen-field">
+                                                    <label>场景 {usageVariantLabels[variantIndex]} 英文参考答案</label>
+                                                    <input
+                                                        type="text"
+                                                        value={exercise.reference_answer_en || ''}
+                                                        onChange={e => setGeneratedWord({
+                                                            ...generatedWord,
+                                                            usage_exercises: usageVariantIndexes.map(index => index === variantIndex
+                                                                ? {
+                                                                    variant_index: index,
+                                                                    prompt_cn: generatedWord.usage_exercises?.[index]?.prompt_cn || '',
+                                                                    reference_answer_en: e.target.value,
+                                                                }
+                                                                : {
+                                                                    variant_index: index,
+                                                                    prompt_cn: generatedWord.usage_exercises?.[index]?.prompt_cn || '',
+                                                                    reference_answer_en: generatedWord.usage_exercises?.[index]?.reference_answer_en || '',
+                                                                })
+                                                        })}
+                                                    />
+                                                </div>
+                                            </div>
+                                        );
+                                    })}
                                     <button
                                         className="btn-primary"
                                         onClick={handleSaveWord}
@@ -997,14 +1093,55 @@ export default function WordlistPage() {
                                         onChange={e => setEditForm({ ...editForm, example: e.target.value })}
                                     />
                                 </div>
-                                <div className="gen-field">
-                                    <label>场景中文句</label>
-                                    <input
-                                        type="text"
-                                        value={editForm.usage_prompt_cn}
-                                        onChange={e => setEditForm({ ...editForm, usage_prompt_cn: e.target.value })}
-                                    />
-                                </div>
+                                {usageVariantIndexes.map(variantIndex => {
+                                    const exercise = editForm.usage_exercises?.[variantIndex] || {};
+                                    return (
+                                        <div className="usage-variant-fields" key={variantIndex}>
+                                            <div className="gen-field">
+                                                <label>场景 {usageVariantLabels[variantIndex]} 中文句</label>
+                                                <input
+                                                    type="text"
+                                                    value={exercise.prompt_cn || ''}
+                                                    onChange={e => setEditForm({
+                                                        ...editForm,
+                                                        usage_exercises: usageVariantIndexes.map(index => index === variantIndex
+                                                            ? {
+                                                                variant_index: index,
+                                                                prompt_cn: e.target.value,
+                                                                reference_answer_en: editForm.usage_exercises?.[index]?.reference_answer_en || '',
+                                                            }
+                                                            : {
+                                                                variant_index: index,
+                                                                prompt_cn: editForm.usage_exercises?.[index]?.prompt_cn || '',
+                                                                reference_answer_en: editForm.usage_exercises?.[index]?.reference_answer_en || '',
+                                                            })
+                                                    })}
+                                                />
+                                            </div>
+                                            <div className="gen-field">
+                                                <label>场景 {usageVariantLabels[variantIndex]} 英文参考答案</label>
+                                                <input
+                                                    type="text"
+                                                    value={exercise.reference_answer_en || ''}
+                                                    onChange={e => setEditForm({
+                                                        ...editForm,
+                                                        usage_exercises: usageVariantIndexes.map(index => index === variantIndex
+                                                            ? {
+                                                                variant_index: index,
+                                                                prompt_cn: editForm.usage_exercises?.[index]?.prompt_cn || '',
+                                                                reference_answer_en: e.target.value,
+                                                            }
+                                                            : {
+                                                                variant_index: index,
+                                                                prompt_cn: editForm.usage_exercises?.[index]?.prompt_cn || '',
+                                                                reference_answer_en: editForm.usage_exercises?.[index]?.reference_answer_en || '',
+                                                            })
+                                                    })}
+                                                />
+                                            </div>
+                                        </div>
+                                    );
+                                })}
                                 <div className="modal-actions">
                                     <button
                                         className="btn-primary"

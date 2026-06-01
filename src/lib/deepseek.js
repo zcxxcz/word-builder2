@@ -1,5 +1,14 @@
 import { supabase } from './supabase';
+import { upsertUsageExercise } from './usageExerciseCache';
 import { isValidUsageExercise } from '../utils/usageExercise';
+import {
+    chooseUsageExercise,
+    findValidExerciseForVariant,
+    getNextUsageVariantIndex,
+    normalizeUsageVariantIndex,
+} from '../utils/usageVariant';
+
+const USAGE_EXERCISE_GENERATION_ATTEMPTS = 3;
 
 // Simple daily counter using localStorage (UI-level quick check; server also enforces limit)
 function checkDailyLimit(key = 'deepseek_gen', limit = 30) {
@@ -81,7 +90,7 @@ export async function generateWordContent(word) {
  * Get a cached usage exercise, or generate and cache one via DeepSeek.
  * @param {string} word
  * @param {string} meaningCn
- * @returns {Promise<{prompt_cn: string, reference_answer_en: string}>}
+ * @returns {Promise<{prompt_cn: string, reference_answer_en: string, variant_index: number}>}
  */
 export async function getUsageExercise(word, meaningCn) {
     const userId = (await supabase.auth.getUser()).data.user?.id;
@@ -90,74 +99,114 @@ export async function getUsageExercise(word, meaningCn) {
     const wordKey = normalizeWord(word);
     const meaningKey = meaningCn?.trim() || '';
     const exerciseContext = { word, meaningCn: meaningKey };
+    const isValid = (exercise) => isValidUsageExercise(exercise, exerciseContext);
+
+    const { data: state, error: stateError } = await supabase
+        .from('user_word_state')
+        .select('next_usage_variant_index')
+        .eq('user_id', userId)
+        .eq('word', wordKey)
+        .maybeSingle();
+
+    if (stateError) throw stateError;
+
+    const targetVariantIndex = normalizeUsageVariantIndex(state?.next_usage_variant_index);
 
     const { data: cached, error: cacheError } = await supabase
         .from('user_usage_exercises')
-        .select('prompt_cn, reference_answer_en')
+        .select('prompt_cn, reference_answer_en, variant_index')
         .eq('user_id', userId)
         .eq('word', wordKey)
         .eq('meaning_cn', meaningKey)
-        .maybeSingle();
+        .order('variant_index', { ascending: true });
 
     if (cacheError) throw cacheError;
-    if (isValidUsageExercise(cached, exerciseContext)) {
-        return cached;
+    const exactChoice = chooseUsageExercise(cached || [], targetVariantIndex, isValid);
+    if (exactChoice.exercise && !exactChoice.usedFallback) {
+        return exactChoice.exercise;
     }
 
     const { data: wordCached, error: wordCacheError } = await supabase
         .from('user_usage_exercises')
-        .select('prompt_cn, reference_answer_en')
+        .select('prompt_cn, reference_answer_en, variant_index')
         .eq('user_id', userId)
         .eq('word', wordKey)
         .order('updated_at', { ascending: false })
-        .limit(5);
+        .limit(10);
 
     if (wordCacheError) throw wordCacheError;
-    const reusableExercise = wordCached?.find(exercise => isValidUsageExercise(exercise, exerciseContext));
-    if (reusableExercise) {
-        return reusableExercise;
+    const wordChoice = chooseUsageExercise(wordCached || [], targetVariantIndex, isValid);
+    if (wordChoice.exercise && !wordChoice.usedFallback) {
+        return wordChoice.exercise;
     }
 
-    const usage = checkDailyLimit('deepseek_usage_gen', 200);
-    if (usage.count >= usage.limit) {
-        throw new Error('今日场景题生成次数已用完（200/200），明天再试');
+    const fallbackVariantIndex = getNextUsageVariantIndex(targetVariantIndex);
+    const fallbackExercise = exactChoice.exercise ||
+        wordChoice.exercise ||
+        findValidExerciseForVariant([...(cached || []), ...(wordCached || [])], fallbackVariantIndex, isValid);
+
+    let lastInvalidExercise = null;
+
+    for (let attempt = 1; attempt <= USAGE_EXERCISE_GENERATION_ATTEMPTS; attempt++) {
+        const usage = checkDailyLimit('deepseek_usage_gen', 200);
+        if (usage.count >= usage.limit) {
+            if (fallbackExercise) return fallbackExercise;
+            throw new Error('今日场景题生成次数已用完（200/200），明天再试');
+        }
+
+        let data;
+        try {
+            const response = await supabase.functions.invoke('deepseek-proxy', {
+                body: {
+                    action: 'generate_usage_exercise',
+                    word,
+                    meaning_cn: meaningKey,
+                    variant_index: targetVariantIndex,
+                    existing_prompt_cn: fallbackExercise?.prompt_cn || '',
+                    existing_reference_answer_en: fallbackExercise?.reference_answer_en || '',
+                    retry_attempt: attempt,
+                    previous_invalid_prompt_cn: lastInvalidExercise?.prompt_cn || '',
+                    previous_invalid_reference_answer_en: lastInvalidExercise?.reference_answer_en || '',
+                },
+            });
+
+            if (response.error) {
+                throw new Error(response.error.message || '场景题生成失败，请稍后再试');
+            }
+
+            data = response.data;
+            if (data?.error) {
+                throw new Error(data.error);
+            }
+            incrementDailyCount('deepseek_usage_gen');
+        } catch (err) {
+            if (fallbackExercise) return fallbackExercise;
+            throw err;
+        }
+
+        const exercise = {
+            prompt_cn: data.prompt_cn || '',
+            reference_answer_en: data.reference_answer_en || '',
+            variant_index: targetVariantIndex,
+        };
+
+        if (!isValidUsageExercise(exercise, exerciseContext)) {
+            lastInvalidExercise = exercise;
+            continue;
+        }
+
+        await upsertUsageExercise({
+            userId,
+            word: wordKey,
+            meaningCn: meaningKey,
+            ...exercise,
+        });
+
+        return exercise;
     }
 
-    const { data, error } = await supabase.functions.invoke('deepseek-proxy', {
-        body: {
-            action: 'generate_usage_exercise',
-            word,
-            meaning_cn: meaningKey,
-        },
-    });
-
-    if (error) {
-        throw new Error(error.message || '场景题生成失败，请稍后再试');
-    }
-
-    if (data?.error) {
-        throw new Error(data.error);
-    }
-
-    const exercise = {
-        prompt_cn: data.prompt_cn || '',
-        reference_answer_en: data.reference_answer_en || '',
-    };
-
-    if (!isValidUsageExercise(exercise, exerciseContext)) {
-        throw new Error('场景题生成结果不符合要求，请重试');
-    }
-
-    await supabase.from('user_usage_exercises').upsert({
-        user_id: userId,
-        word: wordKey,
-        meaning_cn: meaningKey,
-        ...exercise,
-        updated_at: new Date().toISOString(),
-    }, { onConflict: 'user_id,word,meaning_cn' });
-
-    incrementDailyCount('deepseek_usage_gen');
-    return exercise;
+    if (fallbackExercise) return fallbackExercise;
+    throw new Error('场景题暂时没准备好，请稍后重试或暂时跳过');
 }
 
 /**

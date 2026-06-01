@@ -331,8 +331,8 @@ export default function StudyPage() {
                     <UsageCard
                         key={`usage-${study.currentWord.word}-${study.phase}-${completedItems}`}
                         word={study.currentWord}
-                        onSubmit={(passed) => study.submitUsage(passed)}
-                        onSkip={() => study.skipUsage()}
+                        onSubmit={(passed, variantIndex) => study.submitUsage(passed, variantIndex)}
+                        onSkip={(variantIndex) => study.skipUsage(variantIndex)}
                     />
                 )}
             </div>

@@ -27,6 +27,7 @@ export default function UsageCard({ word, onSubmit, onSkip }) {
         setError('');
         setResult(null);
         setAnswer('');
+        setExercise(null);
 
         try {
             const data = await getUsageExercise(word.word, meaning);
@@ -78,13 +79,13 @@ export default function UsageCard({ word, onSubmit, onSkip }) {
     const proceedOnce = (passed) => {
         if (advanceLockRef.current) return;
         advanceLockRef.current = true;
-        onSubmit(passed);
+        onSubmit(passed, exercise?.variant_index);
     };
 
     const skipOnce = () => {
         if (advanceLockRef.current) return;
         advanceLockRef.current = true;
-        onSkip();
+        onSkip(exercise?.variant_index);
     };
 
     return (
