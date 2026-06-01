@@ -22,7 +22,7 @@
 - Zustand
 - Vanilla CSS
 - Supabase Auth、PostgreSQL、RLS、Edge Functions
-- DeepSeek `deepseek-chat`，通过 Supabase Edge Function 代理调用
+- DeepSeek `deepseek-v4-flash`（关闭 thinking mode，启用 JSON Output），通过 Supabase Edge Function 代理调用
 - Web Speech API TTS
 
 ## 快速开始

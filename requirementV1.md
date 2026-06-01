@@ -83,7 +83,7 @@
 | 状态管理 | Zustand |
 | 样式 | Vanilla CSS + CSS Variables（支持暗色模式） |
 | 后端 / 数据库 | Supabase（Auth + PostgreSQL） |
-| AI 生词生成 | DeepSeek API（deepseek-chat 模型） |
+| AI 生词生成 | DeepSeek API（deepseek-v4-flash 模型，关闭 thinking mode，启用 JSON Output） |
 | 发音 | Web Speech API TTS（免费，无外部依赖） |
 
 ### 5.2 数据存储方案

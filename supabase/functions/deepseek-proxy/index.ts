@@ -39,8 +39,10 @@ async function callDeepSeek(deepseekKey: string, prompt: string, maxTokens = 300
             'Authorization': `Bearer ${deepseekKey}`,
         },
         body: JSON.stringify({
-            model: 'deepseek-chat',
+            model: 'deepseek-v4-flash',
             messages: [{ role: 'user', content: prompt }],
+            thinking: { type: 'disabled' },
+            response_format: { type: 'json_object' },
             temperature: 0.3,
             max_tokens: maxTokens,
         }),
