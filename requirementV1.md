@@ -265,7 +265,7 @@ Step A/B 支持在电脑上按 **Enter** 进入下一步；Step C 支持 **Ctrl 
 #### 9.2.4 限流策略
 - 每用户每日 AI 生成上限 **30 次**
 - 超限后提示"明天再试或手动填写"
-- 计数通过 localStorage 实现（开发阶段）；公开部署时可切换为 Edge Function 服务端计数
+- 前端用 localStorage 做快速反馈，Supabase Edge Function 通过 `user_settings` 做服务端计数和兜底限制
 
 ### 9.3 学习模块（P0）
 
@@ -290,8 +290,8 @@ Step A/B 支持在电脑上按 **Enter** 进入下一步；Step C 支持 **Ctrl 
     - 对错反馈 + 错误纠正（至少输入一次正确）
   - Step C 场景应用卡：
     - 目标词/短语 + 当前轮换到的中文场景句
-  - 输入完整英文句子 + AI 批改
-  - 展示反馈、参考答案；只有目标词缺失/用错、核心场景明显无关或英文不可理解时才未通过并进入当天回流；暂时跳过视为本轮未完成，不升级也不降级
+    - 输入完整英文句子 + AI 批改
+    - 展示反馈、参考答案；只有目标词缺失/用错、核心场景明显无关或英文不可理解时才未通过并进入当天回流；暂时跳过视为本轮未完成，不升级也不降级
 - 错词回流：
   - 当天错的词加入回流队列，学习末尾出现（最多 relapse_cap）
   - 回想或拼写失败的词回流时重做回想、拼写、场景应用；仅场景失败且前两项通过时只补场景应用
@@ -438,9 +438,9 @@ word-builder2/
 ├── src/
 │   ├── main.jsx, App.jsx
 │   ├── index.css
-│   ├── lib/          (supabase, deepseek, tts)
+│   ├── lib/          (supabase, deepseek, usageExerciseCache, tts)
 │   ├── stores/       (authStore, settingsStore, studyStore, themeStore)
-│   ├── utils/        (srs, taskEngine, constants, florrTheme)
+│   ├── utils/        (srs, taskEngine, usageExercise, usageVariant, constants, florrTheme)
 │   ├── pages/        (Login, Today, Study, Wordlist, Progress, Settings, Admin)
 │   └── components/   (Layout/, Study/)
 ├── supabase/

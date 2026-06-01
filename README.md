@@ -130,11 +130,11 @@ npm run deploy   # 构建并发布到 gh-pages
 src/
   App.jsx                 # 路由入口
   components/Layout/      # 登录保护和底部 Tab
-  components/Study/       # 回想卡、拼写卡
-  lib/                    # Supabase、DeepSeek 代理调用、TTS、轻量 analytics
+  components/Study/       # 回想卡、拼写卡、场景应用卡
+  lib/                    # Supabase、DeepSeek 代理调用、场景题缓存、TTS、轻量 analytics
   pages/                  # Login、Today、Study、Wordlist、Progress、Settings、Admin
   stores/                 # auth/settings/study Zustand stores
-  utils/                  # SRS、任务生成、常量、Florr 主题映射
+  utils/                  # SRS、任务生成、场景题校验/轮换、常量、Florr 主题映射
 supabase/
   migration.sql
   import_grade7a.sql
