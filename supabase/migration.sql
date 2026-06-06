@@ -85,12 +85,15 @@ CREATE TABLE IF NOT EXISTS user_settings (
   relapse_cap INTEGER DEFAULT 10,
   tts_enabled BOOLEAN DEFAULT true,
   tts_rate FLOAT DEFAULT 1.0,
+  usage_scene_mode TEXT NOT NULL DEFAULT 'rotate' CHECK (usage_scene_mode IN ('rotate', 'fixed_a')),
   daily_gen_count INTEGER DEFAULT 0,
   last_gen_date DATE,
   daily_usage_gen_count INTEGER DEFAULT 0,
   last_usage_gen_date DATE,
   daily_usage_grade_count INTEGER DEFAULT 0,
   last_usage_grade_date DATE,
+  daily_usage_question_count INTEGER DEFAULT 0,
+  last_usage_question_date DATE,
   created_at TIMESTAMPTZ DEFAULT now(),
   updated_at TIMESTAMPTZ DEFAULT now()
 );
@@ -125,6 +128,9 @@ ALTER TABLE user_settings ADD COLUMN IF NOT EXISTS daily_usage_gen_count INTEGER
 ALTER TABLE user_settings ADD COLUMN IF NOT EXISTS last_usage_gen_date DATE;
 ALTER TABLE user_settings ADD COLUMN IF NOT EXISTS daily_usage_grade_count INTEGER DEFAULT 0;
 ALTER TABLE user_settings ADD COLUMN IF NOT EXISTS last_usage_grade_date DATE;
+ALTER TABLE user_settings ADD COLUMN IF NOT EXISTS daily_usage_question_count INTEGER DEFAULT 0;
+ALTER TABLE user_settings ADD COLUMN IF NOT EXISTS last_usage_question_date DATE;
+ALTER TABLE user_settings ADD COLUMN IF NOT EXISTS usage_scene_mode TEXT NOT NULL DEFAULT 'rotate';
 ALTER TABLE user_settings ALTER COLUMN review_cap SET DEFAULT 10;
 ALTER TABLE user_word_state ADD COLUMN IF NOT EXISTS next_usage_variant_index INTEGER NOT NULL DEFAULT 0;
 ALTER TABLE user_usage_exercises ADD COLUMN IF NOT EXISTS variant_index INTEGER NOT NULL DEFAULT 0;
@@ -143,6 +149,17 @@ WHERE old_row.user_id = keep_row.user_id
       AND old_row.ctid < keep_row.ctid
     )
   );
+
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint WHERE conname = 'user_settings_usage_scene_mode_check'
+  ) THEN
+    ALTER TABLE user_settings
+      ADD CONSTRAINT user_settings_usage_scene_mode_check
+      CHECK (usage_scene_mode IN ('rotate', 'fixed_a'));
+  END IF;
+END $$;
 
 DO $$
 BEGIN

@@ -5,9 +5,10 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 
 const DEEPSEEK_API_URL = 'https://api.deepseek.com/v1/chat/completions';
-const WORD_CONTENT_DAILY_LIMIT = 30;
-const USAGE_EXERCISE_DAILY_LIMIT = 200;
-const USAGE_GRADE_DAILY_LIMIT = 200;
+const WORD_CONTENT_DAILY_LIMIT = 100;
+const USAGE_EXERCISE_DAILY_LIMIT = 500;
+const USAGE_GRADE_DAILY_LIMIT = 500;
+const USAGE_QUESTION_DAILY_LIMIT = 200;
 
 const corsHeaders = {
     'Access-Control-Allow-Origin': '*',
@@ -64,7 +65,7 @@ function getLimitConfig(action: string) {
             limit: USAGE_EXERCISE_DAILY_LIMIT,
             countField: 'daily_usage_gen_count',
             dateField: 'last_usage_gen_date',
-            error: '今日场景题生成次数已用完（200/200），明天再试',
+            error: `今日场景题生成次数已用完（${USAGE_EXERCISE_DAILY_LIMIT}/${USAGE_EXERCISE_DAILY_LIMIT}），明天再试`,
         };
     }
 
@@ -73,7 +74,16 @@ function getLimitConfig(action: string) {
             limit: USAGE_GRADE_DAILY_LIMIT,
             countField: 'daily_usage_grade_count',
             dateField: 'last_usage_grade_date',
-            error: '今日场景题批改次数已用完（200/200），明天再试',
+            error: `今日场景题批改次数已用完（${USAGE_GRADE_DAILY_LIMIT}/${USAGE_GRADE_DAILY_LIMIT}），明天再试`,
+        };
+    }
+
+    if (action === 'explain_usage_question') {
+        return {
+            limit: USAGE_QUESTION_DAILY_LIMIT,
+            countField: 'daily_usage_question_count',
+            dateField: 'last_usage_question_date',
+            error: `今日场景题追问次数已用完（${USAGE_QUESTION_DAILY_LIMIT}/${USAGE_QUESTION_DAILY_LIMIT}），明天再试`,
         };
     }
 
@@ -81,7 +91,7 @@ function getLimitConfig(action: string) {
         limit: WORD_CONTENT_DAILY_LIMIT,
         countField: 'daily_gen_count',
         dateField: 'last_gen_date',
-        error: '今日AI生成次数已用完（30/30），明天再试或手动填写',
+        error: `今日AI生成次数已用完（${WORD_CONTENT_DAILY_LIMIT}/${WORD_CONTENT_DAILY_LIMIT}），明天再试或手动填写`,
     };
 }
 
@@ -255,6 +265,8 @@ ${retryHint}
 2. 如果目标词缺失、目标词含义/词性/搭配明显用错、答案和中文场景明显无关，或英文碎片严重到不可理解，应 passed=false；
 3. 非目标词相关的小问题只在 feedback_cn 和 corrected_answer_en 里温和指出，不要因此判失败或让学生回流；
 4. 目标词正确但表达粗糙时 score 给 0.75-0.85；目标词正确且句子自然时给 0.9 以上；目标词错误通常低于 0.7。
+5. corrected_answer_en 必须和 feedback_cn 完全自洽：如果 feedback_cn 指出某个搭配、词形、介词、句式或表达不自然/不准确，corrected_answer_en 必须同步修正这个问题，不允许继续保留被指出的问题表达。
+6. 如果学生答案本身自然正确，corrected_answer_en 可以等于学生答案；如果参考答案也有不自然之处，请给出更自然写法，不要盲目复用参考答案。
 
 {
   "passed": true,
@@ -272,6 +284,47 @@ score 为 0-1 的数字；passed 主要由目标词是否用对和核心场景�
                 score: 0,
                 feedback_cn: '没有得到有效批改，请重试',
                 corrected_answer_en: referenceAnswer,
+            });
+        } else if (action === 'explain_usage_question') {
+            const meaningCn = String(body.meaning_cn || '').trim();
+            const promptCn = String(body.prompt_cn || '').trim();
+            const referenceAnswer = String(body.reference_answer_en || '').trim();
+            const answerEn = String(body.answer_en || '').trim();
+            const feedbackCn = String(body.feedback_cn || '').trim();
+            const correctedAnswer = String(body.corrected_answer_en || '').trim();
+            const questionCn = String(body.question_cn || '').trim();
+
+            if (!promptCn || !answerEn || !questionCn) {
+                return jsonResponse({ error: '请提供题目、学生答案和问题' }, 400);
+            }
+
+            const prompt = `你是一个耐心、准确的初一英语老师。学生刚完成一道场景应用题，现在对批改结果有疑问。请基于题目上下文回答学生问题，严格使用JSON格式输出：
+
+目标词或短语：${word}
+中文释义：${meaningCn || '无'}
+中文场景句：${promptCn}
+参考答案：${referenceAnswer || '无'}
+学生答案：${answerEn}
+批改反馈：${feedbackCn || '无'}
+建议答案：${correctedAnswer || referenceAnswer || '无'}
+学生问题：${questionCn}
+
+回答要求：
+- 用中文解释，适合中国初一学生理解
+- 直接回答学生的问题，重点讲目标词在这个句子里的正确含义、搭配或句式
+- 如果学生混淆了某个义项，要说明“这个词可以有这个意思，但在这个句子里应该怎样用”
+- 如果参考答案或建议答案也不够自然，要指出并给出更自然写法
+- 不要改变原判分，不要鼓励死记唯一答案
+
+{
+  "answer_cn": "2-5句话中文解释，必要时包含1个更自然英文例句"
+}
+
+只输出JSON，不要其他内容`;
+
+            const content = await callDeepSeek(deepseekKey, prompt, 560);
+            parsed = extractJson(content, {
+                answer_cn: '这道题暂时没有解释，请稍后再问一次。',
             });
         } else {
             const prompt = `你是一个面向中国初一学生（12-13岁）的英语词典助手。请为英文单词 "${word}" 生成以下信息，严格使用JSON格式输出：

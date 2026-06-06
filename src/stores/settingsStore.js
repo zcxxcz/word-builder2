@@ -1,11 +1,13 @@
 import { create } from 'zustand';
 import { supabase } from '../lib/supabase';
 import { DEFAULT_SETTINGS, REVIEW_BATCH_LIMIT } from '../utils/constants';
+import { normalizeUsageSceneMode } from '../utils/usageVariant';
 
 function normalizeSettings(settings) {
     return {
         ...settings,
         review_cap: Math.min(settings.review_cap ?? DEFAULT_SETTINGS.review_cap, REVIEW_BATCH_LIMIT),
+        usage_scene_mode: normalizeUsageSceneMode(settings.usage_scene_mode),
     };
 }
 
@@ -28,6 +30,7 @@ export const useSettingsStore = create((set, get) => ({
                     relapse_cap: data.relapse_cap ?? DEFAULT_SETTINGS.relapse_cap,
                     tts_enabled: data.tts_enabled ?? DEFAULT_SETTINGS.tts_enabled,
                     tts_rate: data.tts_rate ?? DEFAULT_SETTINGS.tts_rate,
+                    usage_scene_mode: data.usage_scene_mode ?? DEFAULT_SETTINGS.usage_scene_mode,
                 }),
                 loaded: true,
             });

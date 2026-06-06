@@ -535,3 +535,49 @@
     line-height: 1.5;
     font-size: 15px;
 }
+
+.usage-question {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    margin-bottom: 14px;
+}
+
+.usage-question-toggle {
+    width: 100%;
+}
+
+.usage-question-form {
+    display: grid;
+    gap: 10px;
+}
+
+.usage-question-input {
+    width: 100%;
+    min-height: 78px;
+    padding: 12px;
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    background: var(--surface);
+    color: var(--text-primary);
+    font: inherit;
+    resize: vertical;
+}
+
+.usage-question-input:focus {
+    outline: none;
+    border-color: var(--primary);
+}
+
+.usage-question-answer {
+    padding: 12px;
+    border-radius: 10px;
+    background: var(--surface);
+    color: var(--text-primary);
+    line-height: 1.6;
+    white-space: pre-wrap;
+}
+
+.usage-question-error {
+    color: var(--error);
+}

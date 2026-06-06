@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { getUsageExercise, gradeUsageAnswer } from '../../lib/deepseek';
+import { askUsageQuestion, getUsageExercise, gradeUsageAnswer } from '../../lib/deepseek';
 import { speak } from '../../lib/tts';
 import { useSettingsStore } from '../../stores/settingsStore';
 import './StudyCards.css';
@@ -9,7 +9,7 @@ function getDisplayMeaning(word) {
     return word.meaning_cn || '';
 }
 
-export default function UsageCard({ word, onSubmit, onSkip }) {
+export default function UsageCard({ word, usageSceneMode, onSubmit, onSkip }) {
     const { settings } = useSettingsStore();
     const [exercise, setExercise] = useState(null);
     const [answer, setAnswer] = useState('');
@@ -17,6 +17,11 @@ export default function UsageCard({ word, onSubmit, onSkip }) {
     const [grading, setGrading] = useState(false);
     const [error, setError] = useState('');
     const [result, setResult] = useState(null);
+    const [questionOpen, setQuestionOpen] = useState(false);
+    const [questionText, setQuestionText] = useState('');
+    const [questionAnswer, setQuestionAnswer] = useState('');
+    const [questionError, setQuestionError] = useState('');
+    const [asking, setAsking] = useState(false);
     const inputRef = useRef(null);
     const advanceLockRef = useRef(false);
     const meaning = useMemo(() => getDisplayMeaning(word), [word]);
@@ -28,9 +33,14 @@ export default function UsageCard({ word, onSubmit, onSkip }) {
         setResult(null);
         setAnswer('');
         setExercise(null);
+        setQuestionOpen(false);
+        setQuestionText('');
+        setQuestionAnswer('');
+        setQuestionError('');
+        setAsking(false);
 
         try {
-            const data = await getUsageExercise(word.word, meaning);
+            const data = await getUsageExercise(word.word, meaning, usageSceneMode);
             setExercise(data);
             setTimeout(() => inputRef.current?.focus(), 0);
         } catch (err) {
@@ -38,7 +48,7 @@ export default function UsageCard({ word, onSubmit, onSkip }) {
         } finally {
             setLoading(false);
         }
-    }, [meaning, word.word]);
+    }, [meaning, usageSceneMode, word.word]);
 
     useEffect(() => {
         loadExercise();
@@ -86,6 +96,31 @@ export default function UsageCard({ word, onSubmit, onSkip }) {
         if (advanceLockRef.current) return;
         advanceLockRef.current = true;
         onSkip(exercise?.variant_index);
+    };
+
+    const handleAskQuestion = async (e) => {
+        e?.preventDefault();
+        if (!questionText.trim() || !exercise || !result || asking) return;
+
+        setAsking(true);
+        setQuestionError('');
+        try {
+            const explanation = await askUsageQuestion({
+                word: word.word,
+                meaningCn: meaning,
+                promptCn: exercise.prompt_cn,
+                referenceAnswerEn: exercise.reference_answer_en,
+                answerEn: answer.trim(),
+                feedbackCn: result.feedback_cn,
+                correctedAnswerEn: result.corrected_answer_en || exercise.reference_answer_en,
+                questionCn: questionText.trim(),
+            });
+            setQuestionAnswer(explanation.answer_cn);
+        } catch (err) {
+            setQuestionError(err.message || '追问失败，请重试');
+        } finally {
+            setAsking(false);
+        }
     };
 
     return (
@@ -175,8 +210,39 @@ export default function UsageCard({ word, onSubmit, onSkip }) {
                             </div>
                             {result.feedback_cn && <p>{result.feedback_cn}</p>}
                             <div className="usage-reference">
-                                <span>参考答案</span>
+                                <span>建议答案</span>
                                 <strong>{result.corrected_answer_en || exercise.reference_answer_en}</strong>
+                            </div>
+                            <div className="usage-question">
+                                {!questionOpen ? (
+                                    <button
+                                        type="button"
+                                        className="btn-secondary usage-question-toggle"
+                                        onClick={() => setQuestionOpen(true)}
+                                    >
+                                        我有疑问
+                                    </button>
+                                ) : (
+                                    <form className="usage-question-form" onSubmit={handleAskQuestion}>
+                                        <textarea
+                                            className="usage-question-input"
+                                            value={questionText}
+                                            onChange={e => setQuestionText(e.target.value)}
+                                            placeholder="输入你的问题..."
+                                            disabled={asking}
+                                            rows="3"
+                                        />
+                                        <button
+                                            type="submit"
+                                            className="btn-secondary"
+                                            disabled={asking || !questionText.trim()}
+                                        >
+                                            {asking ? '解答中...' : '提问'}
+                                        </button>
+                                    </form>
+                                )}
+                                {questionError && <p className="usage-question-error">{questionError}</p>}
+                                {questionAnswer && <div className="usage-question-answer">{questionAnswer}</div>}
                             </div>
                             <button
                                 className="btn-submit-usage"

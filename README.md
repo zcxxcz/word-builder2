@@ -117,9 +117,9 @@ npm run deploy   # 构建并发布到 gh-pages
 - `built_in_wordlists`、`built_in_words`：共享内置词表，认证用户只读。
 - `custom_wordlists`、`custom_words`：用户自定义词表和词汇；自定义词可编辑/删除。
 - `user_word_state`：按 `user_id + word` 唯一记录学习等级、复习时间和错误统计；编辑自定义词英文时迁移对应进度。
-- `user_usage_exercises`：按用户缓存场景 A/B 的中文场景句和英文参考答案；旧缓存默认为场景 A，学习时按 `user_word_state.next_usage_variant_index` 轮换并懒生成缺失场景；编辑自定义词英文或场景内容时同步缓存。前端保存会兼容尚未建好四字段唯一约束的库，但生产仍应重新执行最新 `supabase/migration.sql`。
+- `user_usage_exercises`：按用户缓存场景 A/B 的中文场景句和英文参考答案；旧缓存默认为场景 A，默认按 `user_word_state.next_usage_variant_index` 轮换，也可在设置中固定场景 A，并懒生成缺失场景；编辑自定义词英文或场景内容时同步缓存。前端保存会兼容尚未建好四字段唯一约束的库，但生产仍应重新执行最新 `supabase/migration.sql`。
 - `sessions`：学习记录和战报数据。
-- `user_settings`：学习参数、TTS 参数、生词生成计数和场景题 AI 计数。
+- `user_settings`：学习参数、TTS 参数、场景题模式、生词生成计数、场景题生成/批改/追问 AI 计数。
 - `active_study_sessions`：用户级临时学习恢复点；完成、主动退出或清空数据时删除，不纳入 JSON 导出。
 - `admin_users`：后台管理员邮箱白名单，需手动写入小写邮箱。
 - `analytics_events`：轻量使用事件，普通用户只能插入自己的事件，后台跨用户读取只走 `SECURITY DEFINER` RPC。

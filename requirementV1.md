@@ -178,9 +178,10 @@
 - 错误：显示正确拼写，并要求至少再输入一次正确拼写（强化纠正）
 
 #### Step C：场景应用（无选项）
-- 展示目标词/短语、中文释义和系统生成的中文场景句；每个词缓存场景 A/B 两题，单次只练一题，并在后续复习中轮换
+- 展示目标词/短语、中文释义和系统生成的中文场景句；每个词缓存场景 A/B 两题，单次只练一题，默认在后续复习中轮换；用户可在“我的”页固定使用场景 A
 - 学生输入完整英文句子，必须自然用到目标词/短语，允许根据语境变形
-- DeepSeek AI 按“目标词优先”批改：目标词或合理变形用对且核心场景可理解时通过；非目标词相关的小语法、搭配或自然度问题只展示反馈和更自然参考答案，不进入回流
+- DeepSeek AI 按“目标词优先”批改：目标词或合理变形用对且核心场景可理解时通过；非目标词相关的小语法、搭配或自然度问题只展示反馈和更自然建议答案，不进入回流；如果学生答案与参考/建议答案归一化后一致，显示 100 分
+- 批改后允许学生对当前题追问，AI 基于目标词、题面、学生答案、反馈和建议答案解释原因；追问不改变本题判分、回流或 SRS
 - AI 生成或批改失败时允许暂时跳过；跳过不算错，也不更新该词等级
 
 Step A/B 支持在电脑上按 **Enter** 进入下一步；Step C 支持 **Ctrl + Enter** 提交。
@@ -289,9 +290,9 @@ Step A/B 支持在电脑上按 **Enter** 进入下一步；Step C 支持 **Ctrl 
     - 输入框 + 提交（Enter 或按钮）
     - 对错反馈 + 错误纠正（至少输入一次正确）
   - Step C 场景应用卡：
-    - 目标词/短语 + 当前轮换到的中文场景句
+    - 目标词/短语 + 当前场景模式选择到的中文场景句
     - 输入完整英文句子 + AI 批改
-    - 展示反馈、参考答案；只有目标词缺失/用错、核心场景明显无关或英文不可理解时才未通过并进入当天回流；暂时跳过视为本轮未完成，不升级也不降级
+    - 展示反馈、建议答案，并支持当前题追问；只有目标词缺失/用错、核心场景明显无关或英文不可理解时才未通过并进入当天回流；暂时跳过视为本轮未完成，不升级也不降级
 - 错词回流：
   - 当天错的词加入回流队列，学习末尾出现（最多 relapse_cap）
   - 回想或拼写失败的词回流时重做回想、拼写、场景应用；仅场景失败且前两项通过时只补场景应用
@@ -343,7 +344,7 @@ Step A/B 支持在电脑上按 **Enter** 进入下一步；Step C 支持 **Ctrl 
 | `user_word_state` | 学习进度（user_id + word 唯一） | level, next_review_at, last_seen_at, wrong_count, correct_streak, next_usage_variant_index |
 | `user_usage_exercises` | 场景应用题缓存（用户级） | user_id, word, meaning_cn, variant_index, prompt_cn, reference_answer_en |
 | `sessions` | 学习记录 | date, new_count, review_count, spelling_accuracy, level_ups, duration_seconds, hardest_word |
-| `user_settings` | 用户设置 | daily_new, review_cap, relapse_cap, tts_enabled, tts_rate, AI 计数字段 |
+| `user_settings` | 用户设置 | daily_new, review_cap, relapse_cap, tts_enabled, tts_rate, usage_scene_mode, AI 计数字段 |
 | `active_study_sessions` | 未完成学习恢复点（用户级，临时数据） | user_id, status, session_type, snapshot |
 | `admin_users` | 后台管理员白名单 | email |
 | `analytics_events` | 轻量使用事件 | user_id, event_name, event_date, metadata, created_at |

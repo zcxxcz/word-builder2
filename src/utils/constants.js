@@ -16,11 +16,13 @@ export const DEFAULT_SETTINGS = {
     relapse_cap: 10,
     tts_enabled: true,
     tts_rate: 1.0,
+    usage_scene_mode: 'rotate',
 };
 
 // DeepSeek AI daily generation limit per user
-export const AI_DAILY_LIMIT = 30;
-export const USAGE_AI_DAILY_LIMIT = 200;
+export const AI_DAILY_LIMIT = 100;
+export const USAGE_AI_DAILY_LIMIT = 500;
+export const USAGE_QUESTION_DAILY_LIMIT = 200;
 
 // Study session phases
 export const PHASE = {

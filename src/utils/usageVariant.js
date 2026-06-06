@@ -1,5 +1,9 @@
 export const USAGE_VARIANT_COUNT = 2;
 export const DEFAULT_USAGE_VARIANT_INDEX = 0;
+export const USAGE_SCENE_MODE = {
+    ROTATE: 'rotate',
+    FIXED_A: 'fixed_a',
+};
 
 export function normalizeUsageVariantIndex(value) {
     const index = Number(value);
@@ -9,6 +13,22 @@ export function normalizeUsageVariantIndex(value) {
 
 export function getNextUsageVariantIndex(value) {
     return (normalizeUsageVariantIndex(value) + 1) % USAGE_VARIANT_COUNT;
+}
+
+export function normalizeUsageSceneMode(value) {
+    return value === USAGE_SCENE_MODE.FIXED_A
+        ? USAGE_SCENE_MODE.FIXED_A
+        : USAGE_SCENE_MODE.ROTATE;
+}
+
+export function getTargetUsageVariantIndex(nextVariantIndex, sceneMode) {
+    return normalizeUsageSceneMode(sceneMode) === USAGE_SCENE_MODE.FIXED_A
+        ? DEFAULT_USAGE_VARIANT_INDEX
+        : normalizeUsageVariantIndex(nextVariantIndex);
+}
+
+export function shouldAdvanceUsageVariant(sceneMode) {
+    return normalizeUsageSceneMode(sceneMode) === USAGE_SCENE_MODE.ROTATE;
 }
 
 export function getVariantLabel(value) {

@@ -1,11 +1,14 @@
 import { supabase } from './supabase';
 import { upsertUsageExercise } from './usageExerciseCache';
+import { AI_DAILY_LIMIT, USAGE_AI_DAILY_LIMIT, USAGE_QUESTION_DAILY_LIMIT } from '../utils/constants';
+import { isEquivalentUsageAnswer } from '../utils/usageAnswer';
 import { isValidUsageExercise } from '../utils/usageExercise';
 import {
     chooseUsageExercise,
     findValidExerciseForVariant,
     getNextUsageVariantIndex,
-    normalizeUsageVariantIndex,
+    getTargetUsageVariantIndex,
+    shouldAdvanceUsageVariant,
 } from '../utils/usageVariant';
 
 const USAGE_EXERCISE_GENERATION_ATTEMPTS = 3;
@@ -44,10 +47,10 @@ function isTrue(value) {
  * @returns {Promise<{meaning_cn: string, phonetic: string, example: string, usage_prompt_cn: string, input_word: string, canonical_word: string, spelling_suspected: boolean}>}
  */
 export async function generateWordContent(word) {
-    // Check daily limit (30 per day) - quick UI feedback
-    const usage = checkDailyLimit('deepseek_gen', 30);
+    // Check daily limit - quick UI feedback
+    const usage = checkDailyLimit('deepseek_gen', AI_DAILY_LIMIT);
     if (usage.count >= usage.limit) {
-        throw new Error('今日AI生成次数已用完（30/30），明天再试或手动填写');
+        throw new Error(`今日AI生成次数已用完（${AI_DAILY_LIMIT}/${AI_DAILY_LIMIT}），明天再试或手动填写`);
     }
 
     try {
@@ -90,9 +93,10 @@ export async function generateWordContent(word) {
  * Get a cached usage exercise, or generate and cache one via DeepSeek.
  * @param {string} word
  * @param {string} meaningCn
+ * @param {string} usageSceneMode
  * @returns {Promise<{prompt_cn: string, reference_answer_en: string, variant_index: number}>}
  */
-export async function getUsageExercise(word, meaningCn) {
+export async function getUsageExercise(word, meaningCn, usageSceneMode = 'rotate') {
     const userId = (await supabase.auth.getUser()).data.user?.id;
     if (!userId) throw new Error('请先登录');
 
@@ -110,7 +114,8 @@ export async function getUsageExercise(word, meaningCn) {
 
     if (stateError) throw stateError;
 
-    const targetVariantIndex = normalizeUsageVariantIndex(state?.next_usage_variant_index);
+    const targetVariantIndex = getTargetUsageVariantIndex(state?.next_usage_variant_index, usageSceneMode);
+    const allowSceneFallback = shouldAdvanceUsageVariant(usageSceneMode);
 
     const { data: cached, error: cacheError } = await supabase
         .from('user_usage_exercises')
@@ -121,7 +126,12 @@ export async function getUsageExercise(word, meaningCn) {
         .order('variant_index', { ascending: true });
 
     if (cacheError) throw cacheError;
-    const exactChoice = chooseUsageExercise(cached || [], targetVariantIndex, isValid);
+    const exactChoice = allowSceneFallback
+        ? chooseUsageExercise(cached || [], targetVariantIndex, isValid)
+        : {
+            exercise: findValidExerciseForVariant(cached || [], targetVariantIndex, isValid),
+            usedFallback: false,
+        };
     if (exactChoice.exercise && !exactChoice.usedFallback) {
         return exactChoice.exercise;
     }
@@ -135,23 +145,30 @@ export async function getUsageExercise(word, meaningCn) {
         .limit(10);
 
     if (wordCacheError) throw wordCacheError;
-    const wordChoice = chooseUsageExercise(wordCached || [], targetVariantIndex, isValid);
+    const wordChoice = allowSceneFallback
+        ? chooseUsageExercise(wordCached || [], targetVariantIndex, isValid)
+        : {
+            exercise: findValidExerciseForVariant(wordCached || [], targetVariantIndex, isValid),
+            usedFallback: false,
+        };
     if (wordChoice.exercise && !wordChoice.usedFallback) {
         return wordChoice.exercise;
     }
 
     const fallbackVariantIndex = getNextUsageVariantIndex(targetVariantIndex);
-    const fallbackExercise = exactChoice.exercise ||
-        wordChoice.exercise ||
-        findValidExerciseForVariant([...(cached || []), ...(wordCached || [])], fallbackVariantIndex, isValid);
+    const fallbackExercise = allowSceneFallback
+        ? exactChoice.exercise ||
+            wordChoice.exercise ||
+            findValidExerciseForVariant([...(cached || []), ...(wordCached || [])], fallbackVariantIndex, isValid)
+        : null;
 
     let lastInvalidExercise = null;
 
     for (let attempt = 1; attempt <= USAGE_EXERCISE_GENERATION_ATTEMPTS; attempt++) {
-        const usage = checkDailyLimit('deepseek_usage_gen', 200);
+        const usage = checkDailyLimit('deepseek_usage_gen', USAGE_AI_DAILY_LIMIT);
         if (usage.count >= usage.limit) {
             if (fallbackExercise) return fallbackExercise;
-            throw new Error('今日场景题生成次数已用完（200/200），明天再试');
+            throw new Error(`今日场景题生成次数已用完（${USAGE_AI_DAILY_LIMIT}/${USAGE_AI_DAILY_LIMIT}），明天再试`);
         }
 
         let data;
@@ -215,9 +232,9 @@ export async function getUsageExercise(word, meaningCn) {
  * @returns {Promise<{passed: boolean, score: number, feedback_cn: string, corrected_answer_en: string}>}
  */
 export async function gradeUsageAnswer(params) {
-    const usage = checkDailyLimit('deepseek_usage_grade', 200);
+    const usage = checkDailyLimit('deepseek_usage_grade', USAGE_AI_DAILY_LIMIT);
     if (usage.count >= usage.limit) {
-        throw new Error('今日场景题批改次数已用完（200/200），明天再试');
+        throw new Error(`今日场景题批改次数已用完（${USAGE_AI_DAILY_LIMIT}/${USAGE_AI_DAILY_LIMIT}），明天再试`);
     }
 
     const { data, error } = await supabase.functions.invoke('deepseek-proxy', {
@@ -241,10 +258,56 @@ export async function gradeUsageAnswer(params) {
 
     incrementDailyCount('deepseek_usage_grade');
 
+    const correctedAnswer = data.corrected_answer_en || params.referenceAnswerEn;
+    const isExactMatch = isEquivalentUsageAnswer(params.answerEn, [
+        params.referenceAnswerEn,
+        correctedAnswer,
+    ]);
+
     return {
-        passed: Boolean(data.passed),
-        score: Number(data.score || 0),
+        passed: isExactMatch ? true : Boolean(data.passed),
+        score: isExactMatch ? 1 : Number(data.score || 0),
         feedback_cn: data.feedback_cn || '',
-        corrected_answer_en: data.corrected_answer_en || params.referenceAnswerEn,
+        corrected_answer_en: correctedAnswer,
+    };
+}
+
+/**
+ * Ask DeepSeek to explain a usage grading question.
+ * @param {object} params
+ * @returns {Promise<{answer_cn: string}>}
+ */
+export async function askUsageQuestion(params) {
+    const usage = checkDailyLimit('deepseek_usage_question', USAGE_QUESTION_DAILY_LIMIT);
+    if (usage.count >= usage.limit) {
+        throw new Error(`今日场景题追问次数已用完（${USAGE_QUESTION_DAILY_LIMIT}/${USAGE_QUESTION_DAILY_LIMIT}），明天再试`);
+    }
+
+    const { data, error } = await supabase.functions.invoke('deepseek-proxy', {
+        body: {
+            action: 'explain_usage_question',
+            word: params.word,
+            meaning_cn: params.meaningCn || '',
+            prompt_cn: params.promptCn,
+            reference_answer_en: params.referenceAnswerEn,
+            answer_en: params.answerEn,
+            feedback_cn: params.feedbackCn || '',
+            corrected_answer_en: params.correctedAnswerEn || '',
+            question_cn: params.questionCn,
+        },
+    });
+
+    if (error) {
+        throw new Error(error.message || '追问失败，请稍后再试');
+    }
+
+    if (data?.error) {
+        throw new Error(data.error);
+    }
+
+    incrementDailyCount('deepseek_usage_question');
+
+    return {
+        answer_cn: data.answer_cn || '这道题暂时没有解释，请稍后再问一次。',
     };
 }

@@ -31,9 +31,10 @@ Run `npm run lint` after code changes. Run `npm run build` when routing, deploym
 - Built-in wordlists are shared read-only data; user-owned tables are keyed by `user_id`.
 - Learning state is unique by `user_id + word`, so duplicate English words across lists share one progress record.
 - When editing a custom word's English spelling, keep word-keyed state consistent by migrating `user_word_state` and `user_usage_exercises`; deleting a custom word must not delete learning progress.
-- Usage application uses two cached variants per `user_id + word + meaning_cn`: `variant_index` 0 is scene A and 1 is scene B. Existing legacy rows default to scene A, and `user_word_state.next_usage_variant_index` controls which one is practiced next.
+- Usage application uses two cached variants per `user_id + word + meaning_cn`: `variant_index` 0 is scene A and 1 is scene B. Existing legacy rows default to scene A. `user_settings.usage_scene_mode` chooses A/B rotation or fixed scene A; in rotation mode, `user_word_state.next_usage_variant_index` controls which one is practiced next.
 - Invalid AI-generated usage exercises should be retried automatically; do not expose internal validation failures as the student's next action unless all retries and fallbacks fail.
 - Usage grading is target-word-first: pass when the target word is used correctly and the core scene is understandable; do not fail solely for non-target-word grammar or naturalness issues.
+- Usage follow-up questions explain the current grading result only; they must not change pass/fail, relapse, SRS, or cached exercise data.
 - Daily study queue order is review, new learning, new-word review, then relapse words.
 - New learning itself does not upgrade SRS level; review-style phases update level only when recall, spelling, and usage all pass.
 - A failed recall or first spelling attempt adds the word to the same-day relapse queue.

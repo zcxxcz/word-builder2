@@ -4,7 +4,10 @@ import test from 'node:test';
 import {
     chooseUsageExercise,
     getNextUsageVariantIndex,
+    getTargetUsageVariantIndex,
     normalizeUsageVariantIndex,
+    shouldAdvanceUsageVariant,
+    USAGE_SCENE_MODE,
     withDefaultVariant,
 } from '../src/utils/usageVariant.js';
 
@@ -60,4 +63,18 @@ test('normalizes imported or invalid variant values to scene A', () => {
 test('toggles between the two usage scenes', () => {
     assert.equal(getNextUsageVariantIndex(0), 1);
     assert.equal(getNextUsageVariantIndex(1), 0);
+});
+
+test('fixed scene mode always targets scene A', () => {
+    assert.equal(getTargetUsageVariantIndex(1, USAGE_SCENE_MODE.FIXED_A), 0);
+    assert.equal(getTargetUsageVariantIndex(0, USAGE_SCENE_MODE.FIXED_A), 0);
+});
+
+test('rotate scene mode follows and advances the stored variant', () => {
+    assert.equal(getTargetUsageVariantIndex(1, USAGE_SCENE_MODE.ROTATE), 1);
+    assert.equal(shouldAdvanceUsageVariant(USAGE_SCENE_MODE.ROTATE), true);
+});
+
+test('fixed scene mode does not advance to the next variant', () => {
+    assert.equal(shouldAdvanceUsageVariant(USAGE_SCENE_MODE.FIXED_A), false);
 });

@@ -8,7 +8,7 @@ import { upsertUsageExercise } from '../lib/usageExerciseCache';
 import { REVIEW_BATCH_LIMIT } from '../utils/constants';
 import { getToday } from '../utils/srs';
 import { isValidUsageExercise } from '../utils/usageExercise';
-import { normalizeUsageVariantIndex } from '../utils/usageVariant';
+import { normalizeUsageSceneMode, normalizeUsageVariantIndex, USAGE_SCENE_MODE } from '../utils/usageVariant';
 import './SettingsPage.css';
 
 export default function SettingsPage() {
@@ -169,6 +169,7 @@ export default function SettingsPage() {
                         relapse_cap: data.user_settings.relapse_cap,
                         tts_enabled: data.user_settings.tts_enabled,
                         tts_rate: data.user_settings.tts_rate,
+                        usage_scene_mode: data.user_settings.usage_scene_mode,
                     });
                 }
 
@@ -279,6 +280,27 @@ export default function SettingsPage() {
                         onChange={e => handleSettingChange('relapse_cap', parseInt(e.target.value))}
                         className="setting-slider"
                     />
+                </div>
+                <div className="setting-item setting-item-block">
+                    <div className="setting-label">
+                        <span>场景题模式</span>
+                    </div>
+                    <div className="theme-segmented-control setting-segmented-control" role="group" aria-label="场景题模式">
+                        <button
+                            type="button"
+                            className={`theme-option ${normalizeUsageSceneMode(settings.usage_scene_mode) === USAGE_SCENE_MODE.ROTATE ? 'active' : ''}`}
+                            onClick={() => handleSettingChange('usage_scene_mode', USAGE_SCENE_MODE.ROTATE)}
+                        >
+                            轮换 A/B
+                        </button>
+                        <button
+                            type="button"
+                            className={`theme-option ${normalizeUsageSceneMode(settings.usage_scene_mode) === USAGE_SCENE_MODE.FIXED_A ? 'active' : ''}`}
+                            onClick={() => handleSettingChange('usage_scene_mode', USAGE_SCENE_MODE.FIXED_A)}
+                        >
+                            固定场景 A
+                        </button>
+                    </div>
                 </div>
             </div>
 

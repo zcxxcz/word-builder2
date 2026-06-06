@@ -4,7 +4,7 @@ import { recordAnalyticsEvent } from '../lib/analytics';
 import { supabase } from '../lib/supabase';
 import { PHASE, STEP } from '../utils/constants';
 import { calculateLevelUpdate, getToday, shuffle } from '../utils/srs';
-import { getNextUsageVariantIndex, normalizeUsageVariantIndex } from '../utils/usageVariant';
+import { getNextUsageVariantIndex, normalizeUsageVariantIndex, shouldAdvanceUsageVariant } from '../utils/usageVariant';
 
 const FULL_REVIEW_STEPS = [STEP.RECALL, STEP.SPELLING, STEP.USAGE];
 
@@ -88,8 +88,9 @@ function wasSeenOnStudyDate(wordState, studyDate) {
     return getToday(lastSeenDate) === studyDate;
 }
 
-async function persistNextUsageVariant(userId, wordKey, variantIndex) {
+async function persistNextUsageVariant(userId, wordKey, variantIndex, usageSceneMode) {
     if (!userId || !wordKey || variantIndex === undefined || variantIndex === null) return;
+    if (!shouldAdvanceUsageVariant(usageSceneMode)) return;
 
     const nextUsageVariantIndex = getNextUsageVariantIndex(normalizeUsageVariantIndex(variantIndex));
     const { error } = await supabase.from('user_word_state').upsert({
@@ -543,7 +544,7 @@ export const useStudyStore = create(persist((set, get) => ({
     /**
      * Submit AI-graded usage application result.
      */
-    submitUsage: (passed, variantIndex) => {
+    submitUsage: (passed, variantIndex, usageSceneMode) => {
         const { currentWord, phase, step, sessionResults, wordPhaseResults, isFinishingPhase, isCompletingSession, sessionUserId } = get();
         if (!currentWord || isFinishingPhase || isCompletingSession) return;
 
@@ -580,14 +581,14 @@ export const useStudyStore = create(persist((set, get) => ({
         });
 
         console.log('usage_submit', { correct: passed });
-        void persistNextUsageVariant(sessionUserId, wordKey, variantIndex);
+        void persistNextUsageVariant(sessionUserId, wordKey, variantIndex, usageSceneMode);
         get().advanceWord();
     },
 
     /**
      * Skip usage application when AI generation/grading is unavailable.
      */
-    skipUsage: (variantIndex) => {
+    skipUsage: (variantIndex, usageSceneMode) => {
         const { currentWord, phase, step, sessionResults, wordPhaseResults, isFinishingPhase, isCompletingSession, sessionUserId } = get();
         if (!currentWord || isFinishingPhase || isCompletingSession) return;
 
@@ -612,7 +613,7 @@ export const useStudyStore = create(persist((set, get) => ({
             step,
             reason: 'manual_skip',
         });
-        void persistNextUsageVariant(sessionUserId, wordKey, variantIndex);
+        void persistNextUsageVariant(sessionUserId, wordKey, variantIndex, usageSceneMode);
         get().advanceWord();
     },
 
