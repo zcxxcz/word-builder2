@@ -7,6 +7,21 @@ export const SRS_INTERVALS = {
 };
 
 export const MAX_LEVEL = 3;
+
+export const LEVEL_LABELS = {
+    0: 'L0 陌生',
+    1: 'L1 认识',
+    2: 'L2 熟练',
+    3: 'L3 掌握',
+};
+
+export const LEVEL_SHORT_LABELS = {
+    0: 'L0',
+    1: 'L1',
+    2: 'L2',
+    3: 'L3',
+};
+
 export const REVIEW_BATCH_LIMIT = 10;
 
 // Default daily task parameters

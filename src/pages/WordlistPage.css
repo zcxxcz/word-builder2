@@ -251,6 +251,33 @@
     margin-bottom: 12px;
 }
 
+.level-filter {
+    display: flex;
+    gap: 6px;
+    overflow-x: auto;
+    padding: 2px 0 10px;
+    margin-bottom: 8px;
+}
+
+.level-filter-btn {
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    background: var(--surface);
+    color: var(--text-secondary);
+    font-size: 12px;
+    font-weight: 700;
+    padding: 8px 10px;
+    cursor: pointer;
+    white-space: nowrap;
+    flex-shrink: 0;
+}
+
+.level-filter-btn.active {
+    border-color: var(--primary);
+    background: var(--primary-alpha);
+    color: var(--primary);
+}
+
 .unit-section {
     margin-bottom: 20px;
 }
@@ -365,6 +392,15 @@
     font-size: 12px;
     color: var(--text-tertiary);
     white-space: nowrap;
+}
+
+.word-status.level-badge {
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    background: var(--surface-dim);
+    color: var(--text-secondary);
+    font-weight: 700;
+    padding: 5px 8px;
 }
 
 .word-actions {

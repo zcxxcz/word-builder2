@@ -4,6 +4,7 @@ import { THEMES, useThemeStore } from '../stores/themeStore';
 import { supabase } from '../lib/supabase';
 import { formatStudyDateForDisplay, getStudyDateDaysAgo } from '../utils/srs';
 import { FLORR_WORDLIST_NAME, getFlorrRarity } from '../utils/florrTheme';
+import { LEVEL_LABELS } from '../utils/constants';
 import './ProgressPage.css';
 
 export default function ProgressPage() {
@@ -12,6 +13,7 @@ export default function ProgressPage() {
     const [stats, setStats] = useState(null);
     const [sessions, setSessions] = useState([]);
     const [florrGallery, setFlorrGallery] = useState([]);
+    const [activeLevel, setActiveLevel] = useState(0);
     const [loading, setLoading] = useState(true);
     const isFlorrTheme = theme === THEMES.FLORR;
 
@@ -24,15 +26,19 @@ export default function ProgressPage() {
             // Level distribution
             const { data: states } = await supabase
                 .from('user_word_state')
-                .select('level')
+                .select('word, level')
                 .eq('user_id', user.id);
 
             const levels = { 0: 0, 1: 0, 2: 0, 3: 0 };
+            const wordsByLevel = { 0: [], 1: [], 2: [], 3: [] };
             let total = 0;
             (states || []).forEach(s => {
-                levels[s.level] = (levels[s.level] || 0) + 1;
+                const level = Math.max(0, Math.min(Number(s.level) || 0, 3));
+                levels[level] = (levels[level] || 0) + 1;
+                if (s.word) wordsByLevel[level].push(s.word);
                 total++;
             });
+            Object.values(wordsByLevel).forEach(words => words.sort((a, b) => a.localeCompare(b)));
 
             // This week sessions
             const weekAgo = getStudyDateDaysAgo(7);
@@ -91,6 +97,7 @@ export default function ProgressPage() {
                 totalStudied: total,
                 mastered: levels[3],
                 levels,
+                wordsByLevel,
                 studyDaysThisWeek: studyDays,
             });
             setSessions(recentSessions || []);
@@ -102,7 +109,7 @@ export default function ProgressPage() {
 
     const levelLabels = isFlorrTheme
         ? ['Common', 'Rare', 'Epic', 'Legendary']
-        : ['L0 陌生', 'L1 认识', 'L2 熟练', 'L3 掌握'];
+        : [0, 1, 2, 3].map(level => LEVEL_LABELS[level]);
     const levelColors = isFlorrTheme
         ? ['#9aa59a', '#4aa3df', '#9b5de5', '#f2b544']
         : ['var(--error)', 'var(--warning)', 'var(--primary)', 'var(--success)'];
@@ -117,6 +124,7 @@ export default function ProgressPage() {
     }
 
     const maxLevel = Math.max(...Object.values(stats?.levels || { 0: 1 }), 1);
+    const activeLevelWords = stats?.wordsByLevel?.[activeLevel] || [];
 
     return (
         <div className="progress-page">
@@ -158,6 +166,38 @@ export default function ProgressPage() {
                         </div>
                     ))}
                 </div>
+            </div>
+
+            <div className="progress-section">
+                <h2>{isFlorrTheme ? '稀有度花瓣' : '等级单词'}</h2>
+                <div className="level-word-tabs">
+                    {[0, 1, 2, 3].map(level => (
+                        <button
+                            key={level}
+                            type="button"
+                            className={`level-word-tab ${activeLevel === level ? 'active' : ''}`}
+                            onClick={() => setActiveLevel(level)}
+                        >
+                            <span>{levelLabels[level]}</span>
+                            <strong>{stats?.levels[level] || 0}</strong>
+                        </button>
+                    ))}
+                </div>
+
+                {activeLevelWords.length === 0 ? (
+                    <div className="empty-state">
+                        <p>{isFlorrTheme ? '这个稀有度还没有花瓣' : '这个等级还没有单词'}</p>
+                    </div>
+                ) : (
+                    <div className="level-word-list">
+                        {activeLevelWords.map(word => (
+                            <div key={`${activeLevel}-${word}`} className="level-word-item">
+                                <span>{word}</span>
+                                <strong>{levelLabels[activeLevel]}</strong>
+                            </div>
+                        ))}
+                    </div>
+                )}
             </div>
 
             {isFlorrTheme && florrGallery.length > 0 && (

@@ -9,11 +9,13 @@ import { upsertUsageExercise } from '../lib/usageExerciseCache';
 import { FLORR_AREAS, getFlorrRarity, isFlorrWordlist } from '../utils/florrTheme';
 import { isValidUsageExercise } from '../utils/usageExercise';
 import { normalizeUsageVariantIndex } from '../utils/usageVariant';
+import { LEVEL_LABELS, LEVEL_SHORT_LABELS } from '../utils/constants';
 import './WordlistPage.css';
 
 const normalizeWord = (word) => (word || '').trim().toLowerCase();
 const usageVariantIndexes = [0, 1];
 const usageVariantLabels = ['A', 'B'];
+const LEVEL_FILTERS = ['all', 'unlearned', 0, 1, 2, 3];
 
 export default function WordlistPage() {
     const { user } = useAuthStore();
@@ -32,6 +34,7 @@ export default function WordlistPage() {
     const [studiedWords, setStudiedWords] = useState(new Set());
     const [wordLevels, setWordLevels] = useState(new Map());
     const [selectedWordIds, setSelectedWordIds] = useState([]);
+    const [levelFilter, setLevelFilter] = useState('all');
     const [selectionError, setSelectionError] = useState('');
     const [loading, setLoading] = useState(true);
 
@@ -119,6 +122,7 @@ export default function WordlistPage() {
         setSelectedListSource(isBuiltIn ? 'builtin' : 'custom');
         setSelectedListName(list.name);
         setSelectedWordIds([]);
+        setLevelFilter('all');
         setSelectionError('');
 
         const table = isBuiltIn ? 'built_in_words' : 'custom_words';
@@ -146,6 +150,7 @@ export default function WordlistPage() {
         setStudiedWords(new Set());
         setWordLevels(new Map());
         setSelectedWordIds([]);
+        setLevelFilter('all');
         setSelectionError('');
     };
 
@@ -206,17 +211,32 @@ export default function WordlistPage() {
     };
 
     const getWordStatus = (word) => {
+        const level = wordLevels.get(normalizeWord(word.word)) || 0;
+
         if (isFlorrTheme) {
             if (isWordStudied(word)) {
-                return getFlorrRarity(wordLevels.get(normalizeWord(word.word))).label;
+                return getFlorrRarity(level).label;
             }
             if (!isWordSelectable(word)) return '重复花瓣';
             return '未收集';
         }
 
-        if (isWordStudied(word)) return '已学';
+        if (isWordStudied(word)) return LEVEL_LABELS[level];
         if (!isWordSelectable(word)) return '重复词';
         return '';
+    };
+
+    const getLevelFilterLabel = (filter) => {
+        if (filter === 'all') return '全部';
+        if (filter === 'unlearned') return isFlorrTheme ? '未收集' : '未学';
+        return isFlorrTheme ? getFlorrRarity(filter).label : LEVEL_SHORT_LABELS[filter];
+    };
+
+    const matchesLevelFilter = (word) => {
+        if (levelFilter === 'all') return true;
+        const studied = isWordStudied(word);
+        if (levelFilter === 'unlearned') return !studied;
+        return studied && (wordLevels.get(normalizeWord(word.word)) || 0) === levelFilter;
     };
 
     const throwOnError = ({ error }) => {
@@ -684,9 +704,11 @@ export default function WordlistPage() {
         loadWordlists();
     };
 
+    const visibleWords = words.filter(matchesLevelFilter);
+
     // Group words by unit
     const wordsByUnit = {};
-    words.forEach(w => {
+    visibleWords.forEach(w => {
         const unit = w.unit || '未分组';
         if (!wordsByUnit[unit]) wordsByUnit[unit] = [];
         wordsByUnit[unit].push(w);
@@ -754,6 +776,25 @@ export default function WordlistPage() {
                         </div>
                         {selectionError && <div className="selection-error">{selectionError}</div>}
 
+                        <div className="level-filter" aria-label="按熟练度筛选">
+                            {LEVEL_FILTERS.map(filter => (
+                                <button
+                                    key={filter}
+                                    type="button"
+                                    className={`level-filter-btn ${levelFilter === filter ? 'active' : ''}`}
+                                    onClick={() => setLevelFilter(filter)}
+                                >
+                                    {getLevelFilterLabel(filter)}
+                                </button>
+                            ))}
+                        </div>
+
+                        {visibleWords.length === 0 && (
+                            <div className="empty-state">
+                                <p>当前筛选下没有单词</p>
+                            </div>
+                        )}
+
                         {Object.entries(wordsByUnit).map(([unit, unitWords]) => {
                             const area = FLORR_AREAS[unit];
 
@@ -799,7 +840,7 @@ export default function WordlistPage() {
                                                 </div>
                                                 {status && (
                                                     <div
-                                                        className={`word-status ${isFlorrTheme ? `rarity-badge ${isWordStudied(w) ? getFlorrRarity(wordLevels.get(normalizeWord(w.word))).className : 'rarity-common'}` : ''}`}
+                                                        className={`word-status ${!isFlorrTheme && isWordStudied(w) ? 'level-badge' : ''} ${isFlorrTheme ? `rarity-badge ${isWordStudied(w) ? getFlorrRarity(wordLevels.get(normalizeWord(w.word))).className : 'rarity-common'}` : ''}`}
                                                     >
                                                         {status}
                                                     </div>
