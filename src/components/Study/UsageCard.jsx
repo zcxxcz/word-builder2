@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { askUsageQuestion, getUsageExercise, gradeUsageAnswer } from '../../lib/deepseek';
 import { speak } from '../../lib/tts';
 import { useSettingsStore } from '../../stores/settingsStore';
+import { isEquivalentUsageAnswer } from '../../utils/usageAnswer';
 import './StudyCards.css';
 
 function getDisplayMeaning(word) {
@@ -25,6 +26,16 @@ export default function UsageCard({ word, usageSceneMode, onSubmit, onSkip }) {
     const inputRef = useRef(null);
     const advanceLockRef = useRef(false);
     const meaning = useMemo(() => getDisplayMeaning(word), [word]);
+    const scorePercent = result ? Math.round(result.score * 100) : 0;
+    const recommendedAnswer = result?.corrected_answer_en || exercise?.reference_answer_en || '';
+    const referenceAnswer = exercise?.reference_answer_en || '';
+    const showReferenceAnswer = Boolean(
+        result &&
+        recommendedAnswer &&
+        referenceAnswer &&
+        !isEquivalentUsageAnswer(recommendedAnswer, [referenceAnswer])
+    );
+    const canRedo = Boolean(result && scorePercent < 100);
 
     const loadExercise = useCallback(async () => {
         advanceLockRef.current = false;
@@ -84,6 +95,20 @@ export default function UsageCard({ word, usageSceneMode, onSubmit, onSkip }) {
         if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
             handleSubmit(e);
         }
+    };
+
+    const handleRedo = () => {
+        if (grading || asking) return;
+
+        setAnswer('');
+        setResult(null);
+        setError('');
+        setQuestionOpen(false);
+        setQuestionText('');
+        setQuestionAnswer('');
+        setQuestionError('');
+        setAsking(false);
+        setTimeout(() => inputRef.current?.focus(), 0);
     };
 
     const proceedOnce = (passed) => {
@@ -206,12 +231,18 @@ export default function UsageCard({ word, usageSceneMode, onSubmit, onSkip }) {
                         <div className={`usage-feedback ${result.passed ? 'correct' : 'incorrect'}`}>
                             <div className="usage-feedback-title">
                                 <span>{result.passed ? '✅ 用对了' : '❌ 需要再练'}</span>
-                                <span>{Math.round(result.score * 100)}分</span>
+                                <span>{scorePercent}分</span>
                             </div>
                             {result.feedback_cn && <p>{result.feedback_cn}</p>}
                             <div className="usage-reference">
-                                <span>建议答案</span>
-                                <strong>{result.corrected_answer_en || exercise.reference_answer_en}</strong>
+                                <span>推荐表达</span>
+                                <strong>{recommendedAnswer}</strong>
+                                {showReferenceAnswer && (
+                                    <div className="usage-reference-secondary">
+                                        <span>参考答案</span>
+                                        <strong>{referenceAnswer}</strong>
+                                    </div>
+                                )}
                             </div>
                             <div className="usage-question">
                                 {!questionOpen ? (
@@ -244,13 +275,25 @@ export default function UsageCard({ word, usageSceneMode, onSubmit, onSkip }) {
                                 {questionError && <p className="usage-question-error">{questionError}</p>}
                                 {questionAnswer && <div className="usage-question-answer">{questionAnswer}</div>}
                             </div>
-                            <button
-                                className="btn-submit-usage"
-                                onClick={() => proceedOnce(result.passed)}
-                                disabled={advanceLockRef.current}
-                            >
-                                {result.passed ? '下一题' : '继续（加入回流）'}
-                            </button>
+                            <div className={canRedo ? 'usage-result-actions two' : 'usage-result-actions'}>
+                                {canRedo && (
+                                    <button
+                                        type="button"
+                                        className="btn-secondary"
+                                        onClick={handleRedo}
+                                        disabled={advanceLockRef.current}
+                                    >
+                                        重做本场景
+                                    </button>
+                                )}
+                                <button
+                                    className="btn-submit-usage"
+                                    onClick={() => proceedOnce(result.passed)}
+                                    disabled={advanceLockRef.current}
+                                >
+                                    {result.passed ? '下一题' : '继续（加入回流）'}
+                                </button>
+                            </div>
                         </div>
                     )}
 

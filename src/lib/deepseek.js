@@ -1,7 +1,7 @@
 import { supabase } from './supabase';
 import { upsertUsageExercise } from './usageExerciseCache';
 import { AI_DAILY_LIMIT, USAGE_AI_DAILY_LIMIT, USAGE_QUESTION_DAILY_LIMIT } from '../utils/constants';
-import { isEquivalentUsageAnswer } from '../utils/usageAnswer';
+import { normalizeUsageGradeResult } from '../utils/usageAnswer';
 import { isValidUsageExercise } from '../utils/usageExercise';
 import {
     chooseUsageExercise,
@@ -258,18 +258,11 @@ export async function gradeUsageAnswer(params) {
 
     incrementDailyCount('deepseek_usage_grade');
 
-    const correctedAnswer = data.corrected_answer_en || params.referenceAnswerEn;
-    const isExactMatch = isEquivalentUsageAnswer(params.answerEn, [
-        params.referenceAnswerEn,
-        correctedAnswer,
-    ]);
-
-    return {
-        passed: isExactMatch ? true : Boolean(data.passed),
-        score: isExactMatch ? 1 : Number(data.score || 0),
-        feedback_cn: data.feedback_cn || '',
-        corrected_answer_en: correctedAnswer,
-    };
+    return normalizeUsageGradeResult({
+        answerEn: params.answerEn,
+        referenceAnswerEn: params.referenceAnswerEn,
+        gradeData: data,
+    });
 }
 
 /**

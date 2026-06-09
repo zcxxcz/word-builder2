@@ -536,6 +536,12 @@
     font-size: 15px;
 }
 
+.usage-reference-secondary {
+    margin-top: 10px;
+    padding-top: 10px;
+    border-top: 1px solid var(--border);
+}
+
 .usage-question {
     display: flex;
     flex-direction: column;
@@ -580,4 +586,19 @@
 
 .usage-question-error {
     color: var(--error);
+}
+
+.usage-result-actions {
+    display: grid;
+    gap: 10px;
+}
+
+.usage-result-actions.two {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1.4fr);
+}
+
+@media (max-width: 420px) {
+    .usage-result-actions.two {
+        grid-template-columns: 1fr;
+    }
 }
