@@ -201,6 +201,15 @@ function referenceUsesTargetWord(referenceAnswerEn, word) {
     return forms.some(form => new RegExp(`\\b${escapeRegExp(form)}\\b`).test(answer));
 }
 
+function isQuestionCn(promptCn) {
+    const text = String(promptCn || '').trim();
+    return /[？?]/.test(text) || /[吗呢]$/.test(text.replace(/[。！!]$/, ''));
+}
+
+function isQuestionEn(referenceAnswerEn) {
+    return /\?/.test(String(referenceAnswerEn || ''));
+}
+
 function isLikelyEnglishSentence(referenceAnswerEn) {
     const answer = String(referenceAnswerEn || '').trim();
     if (!ENGLISH_RE.test(answer)) return false;
@@ -220,6 +229,12 @@ export function isValidUsageExercise(exercise, context = {}) {
     if (ENGLISH_RE.test(promptCn)) return false;
     if (USAGE_PROMPT_META_PATTERNS.some(pattern => pattern.test(promptCn))) return false;
     if (!isLikelyEnglishSentence(referenceAnswerEn)) return false;
+
+    // A question prompt must pair with a question reference (and vice versa).
+    // Legacy cached exercises sometimes pair a question prompt with its
+    // *answer*; their faithful translation can never contain the target word,
+    // so they are unanswerable as translation tasks and must be regenerated.
+    if (isQuestionCn(promptCn) !== isQuestionEn(referenceAnswerEn)) return false;
 
     const meaningTokens = getMeaningTokens(meaningCn);
     const normalizedPrompt = normalizeCn(promptCn);

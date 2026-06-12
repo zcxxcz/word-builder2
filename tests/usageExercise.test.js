@@ -126,3 +126,36 @@ test('still rejects references that use a different word entirely', () => {
         meaningCn: '丢失；失去',
     }), false);
 });
+
+test('rejects legacy question prompts paired with an answer reference', () => {
+    // Real production case: faithful translation of the question can never
+    // contain the target word, so the exercise is unanswerable as a
+    // translation task and must be invalidated to trigger regeneration.
+    assert.equal(isValidUsageExercise({
+        prompt_cn: '你今年多少岁?',
+        reference_answer_en: 'I am twelve years old.',
+    }, {
+        word: 'year',
+        meaningCn: '年；年龄',
+    }), false);
+});
+
+test('accepts question prompts paired with a question reference', () => {
+    assert.equal(isValidUsageExercise({
+        prompt_cn: '你能帮助我完成这个作业吗？',
+        reference_answer_en: 'Can you help me finish this homework?',
+    }, {
+        word: 'help',
+        meaningCn: '帮助',
+    }), true);
+});
+
+test('rejects statement prompts paired with a question reference', () => {
+    assert.equal(isValidUsageExercise({
+        prompt_cn: '我每天骑自行车上学。',
+        reference_answer_en: 'How do you go to school every day?',
+    }, {
+        word: 'bicycle',
+        meaningCn: '自行车',
+    }), false);
+});
