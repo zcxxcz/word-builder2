@@ -1,6 +1,7 @@
 import { supabase } from '../lib/supabase';
 import { REVIEW_BATCH_LIMIT } from './constants';
 import { getToday, shuffle } from './srs';
+import { expandWordKeyVariants } from './wordKeys';
 
 const normalizeWord = (word) => (word || '').trim().toLowerCase();
 
@@ -124,7 +125,9 @@ export async function generateDailyQueue(settings, userId) {
 async function enrichWordsFromState(states, userId) {
     if (states.length === 0) return [];
 
-    const words = states.map(s => s.word);
+    // State rows store lowercase keys while built-in lists keep original
+    // casing (Monday, Mr....); expand variants because IN is case-sensitive.
+    const words = expandWordKeyVariants(states.map(s => s.word));
 
     const { data: builtIn } = await supabase
         .from('built_in_words')
@@ -168,6 +171,7 @@ async function enrichWordsFromState(states, userId) {
         return {
             ...wordData,
             ...state,
+            word: wordData.word || state.word,
             meaning_cn: wordData.meaning_cn || state.word,
             all_meanings: wordData.all_meanings || [wordData.meaning_cn || state.word],
         };

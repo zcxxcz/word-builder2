@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { isValidUsageExercise } from '../src/utils/usageExercise.js';
+import { getUsageDisplayMeaning, isValidUsageExercise } from '../src/utils/usageExercise.js';
 
 test('rejects gap-style question that hides the target meaning', () => {
     assert.equal(isValidUsageExercise({
@@ -158,4 +158,14 @@ test('rejects statement prompts paired with a question reference', () => {
         word: 'bicycle',
         meaningCn: '自行车',
     }), false);
+});
+
+test('display meaning skips entries without Chinese characters', () => {
+    // Fallback meaning equals the English word when word data is missing;
+    // it must not be sent to exercise generation as a "Chinese meaning".
+    assert.equal(getUsageDisplayMeaning({ meaning_cn: 'monday' }), '');
+    assert.equal(getUsageDisplayMeaning({ all_meanings: ['monday'], meaning_cn: 'monday' }), '');
+    assert.equal(getUsageDisplayMeaning({ all_meanings: ['monday', '星期一'] }), '星期一');
+    assert.equal(getUsageDisplayMeaning({ meaning_cn: '星期一' }), '星期一');
+    assert.equal(getUsageDisplayMeaning({}), '');
 });

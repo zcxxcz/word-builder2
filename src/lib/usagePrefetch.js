@@ -1,13 +1,9 @@
 import { getUsageExercise } from './deepseek';
+import { getUsageDisplayMeaning } from '../utils/usageExercise';
 
-/**
- * The meaning shown on the usage card; prefetch must use the same value so
- * both paths resolve the same cache entry.
- */
-export function getUsageDisplayMeaning(word) {
-    if (word.all_meanings?.length > 0) return word.all_meanings[0];
-    return word.meaning_cn || '';
-}
+// Prefetch and the usage card must use the same meaning so both paths
+// resolve the same cache entry.
+export { getUsageDisplayMeaning };
 
 // Share one in-flight request per word between background prefetch and the
 // usage card, so a word never triggers duplicate AI generation. Failed

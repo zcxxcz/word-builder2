@@ -219,6 +219,20 @@ function isLikelyEnglishSentence(referenceAnswerEn) {
     return words.length >= 2;
 }
 
+/**
+ * The meaning shown on the usage card and sent to exercise generation.
+ * Only Chinese meanings qualify: when word data is missing the app falls
+ * back to the English word itself, which would make a generated prompt
+ * impossible to validate (it must contain the meaning but no English).
+ */
+export function getUsageDisplayMeaning(word) {
+    const candidates = word?.all_meanings?.length > 0 ? word.all_meanings : [word?.meaning_cn];
+    for (const meaning of candidates) {
+        if (meaning && CHINESE_RE.test(meaning)) return meaning;
+    }
+    return '';
+}
+
 export function isValidUsageExercise(exercise, context = {}) {
     const promptCn = exercise?.prompt_cn?.trim() || '';
     const referenceAnswerEn = exercise?.reference_answer_en?.trim() || '';
