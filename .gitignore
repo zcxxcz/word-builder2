@@ -2,6 +2,9 @@
 .env
 .env.*
 
+# Prompt golden-case run reports
+tests/promptGolden/reports/
+
 # Logs
 logs
 *.log
