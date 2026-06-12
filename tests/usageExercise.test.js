@@ -72,3 +72,57 @@ test('rejects Chinese prompts that contain English text', () => {
         meaningCn: '洞察力;深刻理解;领悟',
     }), false);
 });
+
+test('accepts irregular past forms of the target verb in the reference', () => {
+    assert.equal(isValidUsageExercise({
+        prompt_cn: '昨天我在公交车上丢失了我的钱包。',
+        reference_answer_en: 'I lost my wallet on the bus yesterday.',
+    }, {
+        word: 'lose',
+        meaningCn: '丢失；失去',
+    }), true);
+
+    assert.equal(isValidUsageExercise({
+        prompt_cn: '上周我给妹妹买了一本故事书。',
+        reference_answer_en: 'I bought a storybook for my sister last week.',
+    }, {
+        word: 'buy',
+        meaningCn: '买',
+    }), true);
+
+    assert.equal(isValidUsageExercise({
+        prompt_cn: '老师昨天教了我们一首英文歌。',
+        reference_answer_en: 'The teacher taught us an English song yesterday.',
+    }, {
+        word: 'teach',
+        meaningCn: '教',
+    }), true);
+});
+
+test('accepts irregular plural forms of the target noun in the reference', () => {
+    assert.equal(isValidUsageExercise({
+        prompt_cn: '公园里有很多孩子在玩耍。',
+        reference_answer_en: 'There are many children playing in the park.',
+    }, {
+        word: 'child',
+        meaningCn: '孩子',
+    }), true);
+
+    assert.equal(isValidUsageExercise({
+        prompt_cn: '秋天的树叶变黄了。',
+        reference_answer_en: 'The leaves turn yellow in autumn.',
+    }, {
+        word: 'leaf',
+        meaningCn: '树叶',
+    }), true);
+});
+
+test('still rejects references that use a different word entirely', () => {
+    assert.equal(isValidUsageExercise({
+        prompt_cn: '昨天我在公交车上丢失了我的钱包。',
+        reference_answer_en: 'I misplaced my wallet on the bus yesterday.',
+    }, {
+        word: 'lose',
+        meaningCn: '丢失；失去',
+    }), false);
+});
