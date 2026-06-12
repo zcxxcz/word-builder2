@@ -30,13 +30,28 @@ export function addDaysToStudyDate(dateString, days) {
 }
 
 /**
+ * Interval in days for a word at the given level. At L3 the interval keeps
+ * doubling with consecutive passes (10 → 20 → 40 → 80, capped), so mastered
+ * words stay in a maintenance loop without piling up daily review debt.
+ * Climbing L0→L3 without a failure takes 3 passes, so streak beyond 3 counts
+ * consecutive L3 maintenance passes; failures reset the streak via level drop.
+ */
+export function getReviewIntervalDays(level, correctStreak = 0) {
+    const cappedLevel = Math.min(level, MAX_LEVEL);
+    const baseDays = SRS_INTERVALS[cappedLevel] || SRS_INTERVALS[MAX_LEVEL];
+    if (cappedLevel < MAX_LEVEL) return baseDays;
+
+    const extraPasses = Math.max(0, correctStreak - 3);
+    return baseDays * Math.pow(2, Math.min(extraPasses, 3));
+}
+
+/**
  * Calculate next review date based on level
  * @param {number} level - Current word level (0-3)
  * @returns {string} ISO date string (YYYY-MM-DD)
  */
-export function getNextReviewDate(level, fromDate = new Date()) {
-    const days = SRS_INTERVALS[Math.min(level, MAX_LEVEL)] || SRS_INTERVALS[MAX_LEVEL];
-    return addDaysToStudyDate(getToday(fromDate), days);
+export function getNextReviewDate(level, fromDate = new Date(), correctStreak = 0) {
+    return addDaysToStudyDate(getToday(fromDate), getReviewIntervalDays(level, correctStreak));
 }
 
 /**
@@ -74,10 +89,11 @@ export function calculateLevelUpdate(currentState, recallPassed, spellingPassed,
 
     if (allPassed) {
         const newLevel = Math.min(level + 1, MAX_LEVEL);
+        const newStreak = correct_streak + 1;
         return {
             level: newLevel,
-            next_review_at: getNextReviewDate(newLevel),
-            correct_streak: correct_streak + 1,
+            next_review_at: getNextReviewDate(newLevel, new Date(), newStreak),
+            correct_streak: newStreak,
             wrong_count,
             last_seen_at: new Date().toISOString(),
         };
