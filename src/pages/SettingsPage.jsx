@@ -169,6 +169,7 @@ export default function SettingsPage() {
                         relapse_cap: data.user_settings.relapse_cap,
                         tts_enabled: data.user_settings.tts_enabled,
                         tts_rate: data.user_settings.tts_rate,
+                        sound_enabled: data.user_settings.sound_enabled ?? true,
                         usage_scene_mode: data.user_settings.usage_scene_mode,
                     });
                 }
@@ -316,6 +317,19 @@ export default function SettingsPage() {
                             type="checkbox"
                             checked={settings.tts_enabled}
                             onChange={e => handleSettingChange('tts_enabled', e.target.checked)}
+                        />
+                        <span className="toggle-slider"></span>
+                    </label>
+                </div>
+                <div className="setting-item">
+                    <div className="setting-label">
+                        <span>答题音效</span>
+                    </div>
+                    <label className="toggle">
+                        <input
+                            type="checkbox"
+                            checked={settings.sound_enabled}
+                            onChange={e => handleSettingChange('sound_enabled', e.target.checked)}
                         />
                         <span className="toggle-slider"></span>
                     </label>

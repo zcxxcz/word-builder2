@@ -1,4 +1,5 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
+import { playCorrectSound, playWrongSound } from '../../lib/sfx';
 import { speak } from '../../lib/tts';
 import { useSettingsStore } from '../../stores/settingsStore';
 import './StudyCards.css';
@@ -10,6 +11,17 @@ export default function RecallCard({ word, showAnswer, onReveal, onSubmit }) {
     const handleSpeak = () => {
         speak(word.word, { rate: settings.tts_rate, enabled: settings.tts_enabled });
     };
+
+    const handleSubmit = useCallback((know) => {
+        if (submitted) return;
+        setSubmitted(true);
+        if (know) {
+            playCorrectSound(settings.sound_enabled);
+        } else {
+            playWrongSound(settings.sound_enabled);
+        }
+        onSubmit(know);
+    }, [submitted, onSubmit, settings.sound_enabled]);
 
     useEffect(() => {
         const handleDocumentKeyDown = (e) => {
@@ -25,24 +37,16 @@ export default function RecallCard({ word, showAnswer, onReveal, onSubmit }) {
                 onReveal();
             } else if (showAnswer && key === 'c' && !submitted) {
                 e.preventDefault();
-                setSubmitted(true);
-                onSubmit(true);
+                handleSubmit(true);
             } else if (showAnswer && key === 'w' && !submitted) {
                 e.preventDefault();
-                setSubmitted(true);
-                onSubmit(false);
+                handleSubmit(false);
             }
         };
 
         window.addEventListener('keydown', handleDocumentKeyDown);
         return () => window.removeEventListener('keydown', handleDocumentKeyDown);
-    }, [showAnswer, submitted, onReveal, onSubmit]);
-
-    const handleSubmit = (know) => {
-        if (submitted) return;
-        setSubmitted(true);
-        onSubmit(know);
-    };
+    }, [showAnswer, submitted, onReveal, handleSubmit]);
 
     return (
         <div className="study-card recall-card">

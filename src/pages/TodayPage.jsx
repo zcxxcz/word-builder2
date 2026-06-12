@@ -4,7 +4,8 @@ import { useAuthStore } from '../stores/authStore';
 import { useSettingsStore } from '../stores/settingsStore';
 import { THEMES, useThemeStore } from '../stores/themeStore';
 import { getTaskCounts } from '../utils/taskEngine';
-import { getToday, STUDY_TIME_ZONE } from '../utils/srs';
+import { getStudyDateDaysAgo, getToday, STUDY_TIME_ZONE } from '../utils/srs';
+import { calculateStreak } from '../utils/streak';
 import { supabase } from '../lib/supabase';
 import './TodayPage.css';
 
@@ -18,7 +19,9 @@ export default function TodayPage() {
     const [counts, setCounts] = useState(null);
     const [loading, setLoading] = useState(true);
     const [todaySession, setTodaySession] = useState(null);
+    const [todaySessions, setTodaySessions] = useState([]);
     const [activeSession, setActiveSession] = useState(null);
+    const [streakInfo, setStreakInfo] = useState(null);
 
     useEffect(() => {
         if (user && !loaded) {
@@ -31,6 +34,7 @@ export default function TodayPage() {
             loadCounts();
             loadTodaySession();
             loadActiveSession();
+            loadStreak();
         }
     }, [user, loaded]);
 
@@ -52,10 +56,10 @@ export default function TodayPage() {
             .select('*')
             .eq('user_id', user.id)
             .eq('date', today)
-            .order('created_at', { ascending: false })
-            .limit(1)
-            .maybeSingle();
-        setTodaySession(data);
+            .order('created_at', { ascending: false });
+        const sessions = data || [];
+        setTodaySession(sessions[0] || null);
+        setTodaySessions(sessions);
     };
 
     const loadActiveSession = async () => {
@@ -66,6 +70,15 @@ export default function TodayPage() {
             .eq('status', 'active')
             .maybeSingle();
         setActiveSession(data);
+    };
+
+    const loadStreak = async () => {
+        const { data } = await supabase
+            .from('sessions')
+            .select('date')
+            .eq('user_id', user.id)
+            .gte('date', getStudyDateDaysAgo(400));
+        setStreakInfo(calculateStreak((data || []).map(s => s.date)));
     };
 
     const startReview = () => {
@@ -83,6 +96,19 @@ export default function TodayPage() {
     const estimatedMinutes = counts
         ? Math.ceil((counts.reviewBatchCount || 0) * 0.5)
         : 0;
+
+    // Daily goal: clear all reviews due today. New learning is a bonus, not part of the goal.
+    const reviewDoneToday = todaySessions.reduce((sum, s) => sum + (s.review_count || 0), 0);
+    const newDoneToday = todaySessions.reduce((sum, s) => sum + (s.new_count || 0), 0);
+    const remainingDue = counts?.reviewCount || 0;
+    const goalTotal = reviewDoneToday + remainingDue;
+    const goalPercent = goalTotal > 0
+        ? Math.min(100, Math.round((reviewDoneToday / goalTotal) * 100))
+        : 100;
+    const goalAchieved = goalTotal > 0 && remainingDue === 0;
+
+    const RING_RADIUS = 30;
+    const RING_CIRC = 2 * Math.PI * RING_RADIUS;
 
     return (
         <div className="today-page">
@@ -111,6 +137,71 @@ export default function TodayPage() {
                 </div>
             ) : (
                 <>
+                    {streakInfo && (
+                        <div className={`streak-banner ${streakInfo.studiedToday ? 'active' : ''}`}>
+                            <span className="streak-icon">🔥</span>
+                            <div className="streak-text">
+                                {streakInfo.streak > 0 ? (
+                                    <>
+                                        <strong>
+                                            {isFlorrTheme ? '连续探索' : '连续学习'} {streakInfo.streak} 天
+                                        </strong>
+                                        <span>
+                                            {streakInfo.studiedToday
+                                                ? '今日已打卡'
+                                                : '今天还没打卡，学一组保持连续'}
+                                        </span>
+                                    </>
+                                ) : (
+                                    <>
+                                        <strong>{isFlorrTheme ? '开启连续探索' : '开启连续打卡'}</strong>
+                                        <span>今天完成一次学习，点燃火焰</span>
+                                    </>
+                                )}
+                            </div>
+                        </div>
+                    )}
+
+                    <div className={`goal-card ${goalAchieved ? 'achieved' : ''}`}>
+                        <div className={`goal-ring ${goalAchieved ? 'achieved' : ''}`}>
+                            <svg viewBox="0 0 80 80" width="80" height="80">
+                                <circle className="goal-ring-track" cx="40" cy="40" r={RING_RADIUS} />
+                                <circle
+                                    className="goal-ring-fill"
+                                    cx="40"
+                                    cy="40"
+                                    r={RING_RADIUS}
+                                    strokeDasharray={RING_CIRC}
+                                    strokeDashoffset={RING_CIRC * (1 - goalPercent / 100)}
+                                />
+                            </svg>
+                            <div className="goal-ring-center">
+                                {goalAchieved ? '🎉' : goalTotal === 0 ? '✓' : `${goalPercent}%`}
+                            </div>
+                        </div>
+                        <div className="goal-text">
+                            {goalTotal === 0 ? (
+                                <>
+                                    <strong>今日无到期复习</strong>
+                                    <span>{isFlorrTheme ? '可以去收集新花瓣加餐' : '可以去词表新学一组加餐'}</span>
+                                </>
+                            ) : goalAchieved ? (
+                                <>
+                                    <strong>今日目标达成！</strong>
+                                    <span>到期复习已全部清空</span>
+                                </>
+                            ) : (
+                                <>
+                                    <strong>今日目标：清空到期复习</strong>
+                                    <span>已完成 {reviewDoneToday} / {goalTotal}，还剩 {remainingDue} 词</span>
+                                </>
+                            )}
+                            {newDoneToday > 0 && (
+                                <span className="goal-bonus">✨ 加餐新学 {newDoneToday} 词</span>
+                            )}
+                        </div>
+                    </div>
+
                     <div className="today-stats">
                         <div className="stat-card stat-review">
                             <div className="stat-number">{counts?.reviewCount || 0}</div>

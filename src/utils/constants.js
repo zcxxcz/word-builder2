@@ -31,6 +31,7 @@ export const DEFAULT_SETTINGS = {
     relapse_cap: 10,
     tts_enabled: true,
     tts_rate: 1.0,
+    sound_enabled: true,
     usage_scene_mode: 'rotate',
 };
 

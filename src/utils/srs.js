@@ -1,4 +1,4 @@
-import { SRS_INTERVALS, MAX_LEVEL } from './constants';
+import { SRS_INTERVALS, MAX_LEVEL } from './constants.js';
 
 export const STUDY_TIME_ZONE = 'Asia/Shanghai';
 

@@ -85,6 +85,7 @@ CREATE TABLE IF NOT EXISTS user_settings (
   relapse_cap INTEGER DEFAULT 10,
   tts_enabled BOOLEAN DEFAULT true,
   tts_rate FLOAT DEFAULT 1.0,
+  sound_enabled BOOLEAN DEFAULT true,
   usage_scene_mode TEXT NOT NULL DEFAULT 'rotate' CHECK (usage_scene_mode IN ('rotate', 'fixed_a')),
   daily_gen_count INTEGER DEFAULT 0,
   last_gen_date DATE,
@@ -131,6 +132,7 @@ ALTER TABLE user_settings ADD COLUMN IF NOT EXISTS last_usage_grade_date DATE;
 ALTER TABLE user_settings ADD COLUMN IF NOT EXISTS daily_usage_question_count INTEGER DEFAULT 0;
 ALTER TABLE user_settings ADD COLUMN IF NOT EXISTS last_usage_question_date DATE;
 ALTER TABLE user_settings ADD COLUMN IF NOT EXISTS usage_scene_mode TEXT NOT NULL DEFAULT 'rotate';
+ALTER TABLE user_settings ADD COLUMN IF NOT EXISTS sound_enabled BOOLEAN DEFAULT true;
 ALTER TABLE user_settings ALTER COLUMN review_cap SET DEFAULT 10;
 ALTER TABLE user_word_state ADD COLUMN IF NOT EXISTS next_usage_variant_index INTEGER NOT NULL DEFAULT 0;
 ALTER TABLE user_usage_exercises ADD COLUMN IF NOT EXISTS variant_index INTEGER NOT NULL DEFAULT 0;

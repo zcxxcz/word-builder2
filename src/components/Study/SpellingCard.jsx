@@ -1,4 +1,5 @@
 import { useCallback, useState, useRef, useEffect } from 'react';
+import { playCorrectSound, playWrongSound } from '../../lib/sfx';
 import { speak } from '../../lib/tts';
 import { useSettingsStore } from '../../stores/settingsStore';
 import './StudyCards.css';
@@ -34,6 +35,16 @@ export default function SpellingCard({
         proceedLockRef.current = true;
         onProceed();
     }, [onProceed]);
+
+    // Feedback sounds on grading result changes
+    useEffect(() => {
+        if (spellingResult === 'correct' || spellingResult === 'corrected') {
+            playCorrectSound(settings.sound_enabled);
+        } else if (spellingResult === 'incorrect') {
+            playWrongSound(settings.sound_enabled);
+        }
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [spellingResult]);
 
     // Auto-advance after correct spelling (1 second)
     useEffect(() => {

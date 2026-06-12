@@ -69,6 +69,121 @@
     margin: 0 0 16px;
 }
 
+.heatmap {
+    display: flex;
+    gap: 6px;
+}
+
+.heatmap-weekdays {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    font-size: 9px;
+    color: var(--text-secondary);
+}
+
+.heatmap-weekdays span {
+    width: 12px;
+    height: 13px;
+    line-height: 13px;
+}
+
+.heatmap-grid {
+    display: flex;
+    gap: 4px;
+}
+
+.heatmap-col {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.heatmap-cell {
+    width: 13px;
+    height: 13px;
+    border-radius: 3px;
+}
+
+.heat-0 {
+    background: var(--border);
+}
+
+.heat-1 {
+    background: var(--success);
+    opacity: 0.3;
+}
+
+.heat-2 {
+    background: var(--success);
+    opacity: 0.55;
+}
+
+.heat-3 {
+    background: var(--success);
+    opacity: 0.8;
+}
+
+.heat-4 {
+    background: var(--success);
+}
+
+.heat-future {
+    background: transparent;
+    border: 1px dashed var(--border);
+}
+
+.heatmap-legend {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    justify-content: flex-end;
+    margin-top: 10px;
+    font-size: 10px;
+    color: var(--text-secondary);
+}
+
+.trend-chart {
+    width: 100%;
+    height: auto;
+    display: block;
+}
+
+.trend-line {
+    fill: none;
+    stroke: var(--primary);
+    stroke-width: 2;
+    stroke-linejoin: round;
+}
+
+.trend-dot {
+    fill: var(--primary);
+}
+
+.trend-label {
+    font-size: 9px;
+    font-weight: 700;
+    fill: var(--text-primary);
+    text-anchor: middle;
+}
+
+.trend-axis {
+    font-size: 8px;
+    fill: var(--text-secondary);
+    text-anchor: middle;
+}
+
+.trend-grid {
+    stroke: var(--border);
+    stroke-width: 1;
+    stroke-dasharray: 3 3;
+}
+
+.trend-grid-label {
+    font-size: 7px;
+    fill: var(--text-secondary);
+}
+
 .level-chart {
     display: flex;
     flex-direction: column;

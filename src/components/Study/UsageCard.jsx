@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { askUsageQuestion, getUsageExercise, gradeUsageAnswer } from '../../lib/deepseek';
+import { playCorrectSound, playWrongSound } from '../../lib/sfx';
 import { speak } from '../../lib/tts';
 import { useSettingsStore } from '../../stores/settingsStore';
 import { isEquivalentUsageAnswer } from '../../utils/usageAnswer';
@@ -84,6 +85,11 @@ export default function UsageCard({ word, usageSceneMode, onSubmit, onSkip }) {
                 answerEn: answer.trim(),
             });
             setResult(grade);
+            if (grade.passed) {
+                playCorrectSound(settings.sound_enabled);
+            } else {
+                playWrongSound(settings.sound_enabled);
+            }
         } catch (err) {
             setError(err.message || '批改失败，请重试');
         } finally {

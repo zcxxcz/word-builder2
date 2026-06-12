@@ -30,6 +30,7 @@ export const useSettingsStore = create((set, get) => ({
                     relapse_cap: data.relapse_cap ?? DEFAULT_SETTINGS.relapse_cap,
                     tts_enabled: data.tts_enabled ?? DEFAULT_SETTINGS.tts_enabled,
                     tts_rate: data.tts_rate ?? DEFAULT_SETTINGS.tts_rate,
+                    sound_enabled: data.sound_enabled ?? DEFAULT_SETTINGS.sound_enabled,
                     usage_scene_mode: data.usage_scene_mode ?? DEFAULT_SETTINGS.usage_scene_mode,
                 }),
                 loaded: true,

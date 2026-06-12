@@ -6,6 +6,10 @@ import { useStudyStore } from '../stores/studyStore';
 import { THEMES, useThemeStore } from '../stores/themeStore';
 import { generateNewLearningQueue, generateReviewQueue } from '../utils/taskEngine';
 import { PHASE, STEP } from '../utils/constants';
+import { getStudyDateDaysAgo, getToday } from '../utils/srs';
+import { calculateStreak } from '../utils/streak';
+import { supabase } from '../lib/supabase';
+import { playComboSound } from '../lib/sfx';
 import RecallCard from '../components/Study/RecallCard';
 import SpellingCard from '../components/Study/SpellingCard';
 import UsageCard from '../components/Study/UsageCard';
@@ -22,7 +26,10 @@ export default function StudyPage() {
     const isFlorrTheme = theme === THEMES.FLORR;
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState('');
+    const [remainingDue, setRemainingDue] = useState(null);
+    const [completeStreak, setCompleteStreak] = useState(0);
     const routeKey = searchParams.toString();
+    const combo = study.sessionResults.combo || 0;
 
     useEffect(() => {
         if (user && !loaded) {
@@ -126,6 +133,47 @@ export default function StudyPage() {
         return unit ? { source, listId, unit } : { source, listId };
     };
 
+    // After finishing a batch, check whether more words are still due today
+    // and refresh the streak for the report.
+    useEffect(() => {
+        if (study.phase !== PHASE.COMPLETE || !user) {
+            setRemainingDue(null);
+            setCompleteStreak(0);
+            return;
+        }
+
+        supabase
+            .from('user_word_state')
+            .select('*', { count: 'exact', head: true })
+            .eq('user_id', user.id)
+            .lte('next_review_at', getToday())
+            .then(({ count, error: countError }) => {
+                if (!countError) setRemainingDue(count || 0);
+            });
+
+        supabase
+            .from('sessions')
+            .select('date')
+            .eq('user_id', user.id)
+            .gte('date', getStudyDateDaysAgo(400))
+            .then(({ data }) => {
+                if (data) setCompleteStreak(calculateStreak(data.map(s => s.date)).streak);
+            });
+    }, [study.phase, user]);
+
+    // Combo milestone fanfare every 5 consecutive passes
+    useEffect(() => {
+        if (combo > 0 && combo % 5 === 0) {
+            playComboSound(settings.sound_enabled);
+        }
+    }, [combo]);
+
+    const handleNextBatch = () => {
+        study.resetSession();
+        setRemainingDue(null);
+        navigate(`/study?mode=review&batch=${Date.now()}`);
+    };
+
     // Auto-speak on new recall card
     useEffect(() => {
         if (study.currentWord && study.step === STEP.RECALL && settings.tts_enabled) {
@@ -208,6 +256,12 @@ export default function StudyPage() {
                     </div>
                     <h2>{isFlorrTheme ? '探索完成！' : '学习完成！'}</h2>
 
+                    {completeStreak > 0 && (
+                        <div className="complete-streak">
+                            🔥 {isFlorrTheme ? '连续探索' : '连续学习'} {completeStreak} 天
+                        </div>
+                    )}
+
                     <div className="complete-stats">
                         <div className="complete-stat">
                             <span className="complete-stat-value">{results.newCount}</span>
@@ -250,6 +304,12 @@ export default function StudyPage() {
                                 <strong>{errorWordCount}</strong>
                             </div>
                         )}
+                        {results.maxCombo >= 2 && (
+                            <div className="detail-row">
+                                <span>⚡ 最高连对</span>
+                                <strong>×{results.maxCombo}</strong>
+                            </div>
+                        )}
                         <div className="detail-row">
                             <span>✅ 回想通过</span>
                             <strong>{results.recallKnow} / {results.recallKnow + results.recallDontKnow}</strong>
@@ -274,7 +334,15 @@ export default function StudyPage() {
                         )}
                     </div>
 
-                    <button className="btn-primary btn-finish" onClick={handleExit}>
+                    {remainingDue > 0 && (
+                        <button className="btn-primary btn-finish btn-next-batch" onClick={handleNextBatch}>
+                            {isFlorrTheme ? '继续挑战' : '再来一组'}（还剩 {remainingDue} 词到期）
+                        </button>
+                    )}
+                    <button
+                        className={`${remainingDue > 0 ? 'btn-secondary' : 'btn-primary'} btn-finish`}
+                        onClick={handleExit}
+                    >
                         {isFlorrTheme ? '返回今日探索' : '返回首页'}
                     </button>
                 </div>
@@ -304,6 +372,11 @@ export default function StudyPage() {
 
             {/* Card area */}
             <div className="study-card-area">
+                {combo >= 2 && (
+                    <div className="combo-badge" key={combo}>
+                        ⚡ 连对 ×{combo}
+                    </div>
+                )}
                 {study.currentWord && study.step === STEP.RECALL && (
                     <RecallCard
                         key={`recall-${study.currentWord.word}-${study.phase}-${completedItems}`}

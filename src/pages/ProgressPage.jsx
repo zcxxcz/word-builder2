@@ -2,7 +2,8 @@ import { useState, useEffect } from 'react';
 import { useAuthStore } from '../stores/authStore';
 import { THEMES, useThemeStore } from '../stores/themeStore';
 import { supabase } from '../lib/supabase';
-import { formatStudyDateForDisplay, getStudyDateDaysAgo } from '../utils/srs';
+import { formatStudyDateForDisplay, getStudyDateDaysAgo, getToday } from '../utils/srs';
+import { buildHeatmapWeeks, buildWeeklyAccuracy, getHeatLevel } from '../utils/progressStats';
 import { FLORR_WORDLIST_NAME, getFlorrRarity } from '../utils/florrTheme';
 import { LEVEL_LABELS } from '../utils/constants';
 import './ProgressPage.css';
@@ -12,6 +13,7 @@ export default function ProgressPage() {
     const { theme } = useThemeStore();
     const [stats, setStats] = useState(null);
     const [sessions, setSessions] = useState([]);
+    const [historySessions, setHistorySessions] = useState([]);
     const [florrGallery, setFlorrGallery] = useState([]);
     const [activeLevel, setActiveLevel] = useState(0);
     const [loading, setLoading] = useState(true);
@@ -50,6 +52,14 @@ export default function ProgressPage() {
                 .order('date', { ascending: false });
 
             const studyDays = new Set((weekSessions || []).map(s => s.date)).size;
+
+            // History for heatmap (12 weeks) and weekly accuracy trend
+            const { data: history } = await supabase
+                .from('sessions')
+                .select('date, new_count, review_count, spelling_accuracy')
+                .eq('user_id', user.id)
+                .gte('date', getStudyDateDaysAgo(7 * 12));
+            setHistorySessions(history || []);
 
             // Recent sessions
             const { data: recentSessions } = await supabase
@@ -126,6 +136,16 @@ export default function ProgressPage() {
     const maxLevel = Math.max(...Object.values(stats?.levels || { 0: 1 }), 1);
     const activeLevelWords = stats?.wordsByLevel?.[activeLevel] || [];
 
+    const today = getToday();
+    const heatmapWeeks = buildHeatmapWeeks(historySessions, today);
+    const weeklyAccuracy = buildWeeklyAccuracy(historySessions, today);
+    const trendXStep = 280 / Math.max(weeklyAccuracy.length - 1, 1);
+    const trendPoints = weeklyAccuracy
+        .map((week, index) => ({ ...week, x: 20 + index * trendXStep }))
+        .filter(week => week.accuracy !== null)
+        .map(week => ({ ...week, y: 14 + (1 - week.accuracy) * 92 }));
+    const showTrend = trendPoints.length >= 2;
+
     return (
         <div className="progress-page">
             <header><h1>{isFlorrTheme ? '花瓣进度' : '学习进度'}</h1></header>
@@ -144,6 +164,66 @@ export default function ProgressPage() {
                     <div className="summary-value">{stats?.studyDaysThisWeek || 0}</div>
                     <div className="summary-label">本周学习天数</div>
                 </div>
+            </div>
+
+            {/* Study heatmap */}
+            <div className="progress-section">
+                <h2>{isFlorrTheme ? '探索热力图' : '打卡热力图'}</h2>
+                <div className="heatmap">
+                    <div className="heatmap-weekdays">
+                        <span>一</span><span></span><span>三</span><span></span><span>五</span><span></span><span>日</span>
+                    </div>
+                    <div className="heatmap-grid">
+                        {heatmapWeeks.map(week => (
+                            <div key={week[0].date} className="heatmap-col">
+                                {week.map(day => (
+                                    <div
+                                        key={day.date}
+                                        className={`heatmap-cell ${day.future ? 'heat-future' : `heat-${getHeatLevel(day.count)}`}`}
+                                        title={`${day.date}：${day.count} 词`}
+                                    ></div>
+                                ))}
+                            </div>
+                        ))}
+                    </div>
+                </div>
+                <div className="heatmap-legend">
+                    <span>少</span>
+                    {[0, 1, 2, 3, 4].map(level => (
+                        <div key={level} className={`heatmap-cell heat-${level}`}></div>
+                    ))}
+                    <span>多</span>
+                </div>
+            </div>
+
+            {/* Weekly spelling accuracy trend */}
+            <div className="progress-section">
+                <h2>周拼写正确率</h2>
+                {!showTrend ? (
+                    <div className="empty-state"><p>再学几天解锁趋势 📈</p></div>
+                ) : (
+                    <svg className="trend-chart" viewBox="0 0 334 132">
+                        <line className="trend-grid" x1="14" y1="14" x2="306" y2="14" />
+                        <text className="trend-grid-label" x="308" y="17">100%</text>
+                        <line className="trend-grid" x1="14" y1="60" x2="306" y2="60" />
+                        <text className="trend-grid-label" x="308" y="63">50%</text>
+                        <polyline
+                            className="trend-line"
+                            points={trendPoints.map(p => `${p.x},${p.y}`).join(' ')}
+                        />
+                        {trendPoints.map(p => (
+                            <g key={p.weekStart}>
+                                <circle className="trend-dot" cx={p.x} cy={p.y} r="3.5" />
+                                <text className="trend-label" x={p.x} y={p.y - 8}>
+                                    {Math.round(p.accuracy * 100)}
+                                </text>
+                                <text className="trend-axis" x={p.x} y="128">
+                                    {p.weekStart.slice(5).replace('-', '/')}
+                                </text>
+                            </g>
+                        ))}
+                    </svg>
+                )}
             </div>
 
             {/* Level Distribution */}

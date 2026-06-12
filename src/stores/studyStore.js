@@ -117,8 +117,22 @@ const emptySessionResults = {
     usageTotal: 0,
     usageSkipped: 0,
     levelUps: 0,
+    combo: 0,
+    maxCombo: 0,
     wordErrors: {},
 };
+
+// Combo counts consecutive recall/spelling/usage passes. Usage settles on the
+// final grading result (pass requires >= 90 per grading rules); skipping a
+// usage question affects neither direction.
+function applyComboPass(results) {
+    results.combo = (results.combo || 0) + 1;
+    results.maxCombo = Math.max(results.maxCombo || 0, results.combo);
+}
+
+function applyComboBreak(results) {
+    results.combo = 0;
+}
 
 const SESSION_SNAPSHOT_VERSION = 1;
 
@@ -304,17 +318,10 @@ export const useStudyStore = create(persist((set, get) => ({
             sessionUserId: userId,
             sessionType,
             sessionResults: {
+                ...emptySessionResults,
                 startTime: Date.now(),
                 newCount: newWords.length,
                 reviewCount: reviewWords.length,
-                spellingCorrect: 0,
-                spellingTotal: 0,
-                recallKnow: 0,
-                recallDontKnow: 0,
-                usagePassed: 0,
-                usageTotal: 0,
-                usageSkipped: 0,
-                levelUps: 0,
                 wordErrors: {},
             },
             wordPhaseResults: {},
@@ -440,8 +447,10 @@ export const useStudyStore = create(persist((set, get) => ({
         const newResults = { ...sessionResults };
         if (know) {
             newResults.recallKnow++;
+            applyComboPass(newResults);
         } else {
             newResults.recallDontKnow++;
+            applyComboBreak(newResults);
             // Add to relapse
             get().addToRelapse(currentWord);
             void recordAnalyticsEvent('recall_failed', {
@@ -490,6 +499,7 @@ export const useStudyStore = create(persist((set, get) => ({
 
         if (isCorrect) {
             newResults.spellingCorrect++;
+            applyComboPass(newResults);
             set({
                 spellingResult: 'correct',
                 sessionResults: newResults,
@@ -503,6 +513,7 @@ export const useStudyStore = create(persist((set, get) => ({
             console.log('spelling_submit', { correct: true });
             void get().saveActiveSession();
         } else {
+            applyComboBreak(newResults);
             set({
                 spellingResult: 'incorrect',
                 correctSpelling: currentWord.word,
@@ -554,7 +565,9 @@ export const useStudyStore = create(persist((set, get) => ({
         newResults.usageTotal++;
         if (passed) {
             newResults.usagePassed++;
+            applyComboPass(newResults);
         } else {
+            applyComboBreak(newResults);
             const currentPhaseResults = wordPhaseResults[wordKey] || {};
             const relapseSteps = currentPhaseResults.recallPassed === true && currentPhaseResults.spellingPassed === true
                 ? [STEP.USAGE]
@@ -871,20 +884,7 @@ export const useStudyStore = create(persist((set, get) => ({
             stepAQueue: [],
             stepBQueue: [],
             stepCQueue: [],
-            sessionResults: {
-                startTime: null,
-                newCount: 0,
-                reviewCount: 0,
-                spellingCorrect: 0,
-                spellingTotal: 0,
-                recallKnow: 0,
-                recallDontKnow: 0,
-                usagePassed: 0,
-                usageTotal: 0,
-                usageSkipped: 0,
-                levelUps: 0,
-                wordErrors: {},
-            },
+            sessionResults: { ...emptySessionResults, wordErrors: {} },
             wordPhaseResults: {},
             isActive: false,
             sessionUserId: null,
