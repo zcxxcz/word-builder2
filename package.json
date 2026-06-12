@@ -3,11 +3,16 @@
   "private": true,
   "version": "0.0.0",
   "type": "module",
+  "engines": {
+    "node": "24.x"
+  },
   "scripts": {
     "dev": "vite --host",
     "test": "node --test tests/*.test.js",
     "build": "vite build",
-    "deploy": "vite build && gh-pages -d dist",
+    "deploy": "npm run deploy:github && npm run deploy:vercel",
+    "deploy:github": "vite build && gh-pages -d dist",
+    "deploy:vercel": "npx --yes vercel@latest build --prod --yes && npx --yes vercel@latest deploy --prebuilt --prod --yes",
     "lint": "eslint .",
     "preview": "vite preview"
   },

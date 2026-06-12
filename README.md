@@ -87,14 +87,56 @@ npm run dev      # 本地开发
 npm run build    # 生产构建
 npm run preview  # 预览 dist
 npm run lint     # ESLint 检查
-npm run deploy   # 构建并发布到 gh-pages
+npm run deploy   # 依次发布到 GitHub Pages 和 Vercel
+npm run deploy:github  # 只发布到 GitHub Pages
+npm run deploy:vercel  # 只发布到 Vercel
 ```
 
-`vite.config.js` 设置了 `base: '/word-builder2/'`，配合 GitHub Pages 路径使用。
+`vite.config.js` 设置了 `base: '/word-builder2/'`，配合 GitHub Pages 路径使用。Vercel 也使用同一份构建产物，并通过 `vercel.json` 将 `/word-builder2/*` 重写到静态文件根目录。
+
+## 部署
+
+### GitHub Pages
+
+发布两边：
+
+```powershell
+npm run deploy
+```
+
+只发布 GitHub Pages：
+
+```powershell
+npm run deploy:github
+```
+
+部署后 URL 形如 `/word-builder2/#/wordlist`，静态使用手册为 `/word-builder2/user-manual.html`。
+
+### Vercel
+
+本机已通过 Vercel CLI 链接到 Vercel 项目。只发布 Vercel：
+
+```powershell
+npm run deploy:vercel
+```
+
+仓库内的 `vercel.json` 会让 Vercel 使用：
+
+- Build Command: `npm run build`
+- Output Directory: `dist`
+
+在 Vercel Project Settings 的 Environment Variables 中配置前端公开变量名：
+
+```env
+VITE_SUPABASE_URL=
+VITE_SUPABASE_ANON_KEY=
+```
+
+不要在 Vercel 中配置 `DEEPSEEK_API_KEY`；DeepSeek 仍只通过 Supabase Edge Function `deepseek-proxy` 使用服务端密钥。如果 Supabase Auth 邮件确认或跳转登录需要使用 Vercel 域名，请在 Supabase Auth 的允许跳转 URL 中加入对应的 Vercel URL。
 
 ## 路由
 
-应用使用 `HashRouter`，部署后 URL 形如 `/word-builder2/#/wordlist`。
+应用使用 `HashRouter`。GitHub Pages 和 Vercel 部署后 URL 均可使用 `/word-builder2/#/wordlist`。
 
 | 路由 | 页面 |
 | --- | --- |
