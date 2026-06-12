@@ -10,10 +10,12 @@ import { getStudyDateDaysAgo, getToday } from '../utils/srs';
 import { calculateStreak } from '../utils/streak';
 import { supabase } from '../lib/supabase';
 import { playComboSound } from '../lib/sfx';
+import LearnCard from '../components/Study/LearnCard';
 import RecallCard from '../components/Study/RecallCard';
 import SpellingCard from '../components/Study/SpellingCard';
 import UsageCard from '../components/Study/UsageCard';
 import { speak } from '../lib/tts';
+import { getUsageDisplayMeaning, prefetchUsageExercise } from '../lib/usagePrefetch';
 import './StudyPage.css';
 
 export default function StudyPage() {
@@ -174,12 +176,27 @@ export default function StudyPage() {
         navigate(`/study?mode=review&batch=${Date.now()}`);
     };
 
-    // Auto-speak on new recall card
+    // Auto-speak on new recall/learn card
     useEffect(() => {
-        if (study.currentWord && study.step === STEP.RECALL && settings.tts_enabled) {
+        if (study.currentWord && (study.step === STEP.RECALL || study.step === STEP.LEARN) && settings.tts_enabled) {
             speak(study.currentWord.word, { rate: settings.tts_rate, enabled: true });
         }
     }, [study.currentWord?.word, study.step]);
+
+    // Prefetch the next usage exercises in the background so the usage card
+    // opens without waiting for AI generation. Generated exercises are cached
+    // per user+word in the DB, so prefetched-but-unused ones are not wasted.
+    useEffect(() => {
+        if (!study.isActive) return;
+
+        const upcoming = study.queue
+            .filter(item => item._step === STEP.USAGE)
+            .slice(0, 2);
+        for (const item of upcoming) {
+            prefetchUsageExercise(item.word, getUsageDisplayMeaning(item), settings.usage_scene_mode);
+        }
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [study.currentWord?.word, study.step, study.isActive]);
 
     const handleExit = () => {
         const exitTarget = study.sessionType === 'new' ? '/wordlist' : '/';
@@ -377,6 +394,14 @@ export default function StudyPage() {
                         ⚡ 连对 ×{combo}
                     </div>
                 )}
+                {study.currentWord && study.step === STEP.LEARN && (
+                    <LearnCard
+                        key={`learn-${study.currentWord.word}-${study.phase}-${completedItems}`}
+                        word={study.currentWord}
+                        onContinue={() => study.confirmLearn()}
+                    />
+                )}
+
                 {study.currentWord && study.step === STEP.RECALL && (
                     <RecallCard
                         key={`recall-${study.currentWord.word}-${study.phase}-${completedItems}`}

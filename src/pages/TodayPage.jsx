@@ -6,6 +6,7 @@ import { THEMES, useThemeStore } from '../stores/themeStore';
 import { getTaskCounts } from '../utils/taskEngine';
 import { getStudyDateDaysAgo, getToday, STUDY_TIME_ZONE } from '../utils/srs';
 import { calculateStreak } from '../utils/streak';
+import { estimateStudyMinutes } from '../utils/progressStats';
 import { supabase } from '../lib/supabase';
 import './TodayPage.css';
 
@@ -22,6 +23,7 @@ export default function TodayPage() {
     const [todaySessions, setTodaySessions] = useState([]);
     const [activeSession, setActiveSession] = useState(null);
     const [streakInfo, setStreakInfo] = useState(null);
+    const [recentSessions, setRecentSessions] = useState([]);
 
     useEffect(() => {
         if (user && !loaded) {
@@ -35,6 +37,7 @@ export default function TodayPage() {
             loadTodaySession();
             loadActiveSession();
             loadStreak();
+            loadRecentSessions();
         }
     }, [user, loaded]);
 
@@ -81,6 +84,16 @@ export default function TodayPage() {
         setStreakInfo(calculateStreak((data || []).map(s => s.date)));
     };
 
+    const loadRecentSessions = async () => {
+        const { data } = await supabase
+            .from('sessions')
+            .select('new_count, review_count, duration_seconds')
+            .eq('user_id', user.id)
+            .order('created_at', { ascending: false })
+            .limit(5);
+        setRecentSessions(data || []);
+    };
+
     const startReview = () => {
         navigate('/study?mode=review');
     };
@@ -94,7 +107,7 @@ export default function TodayPage() {
     };
 
     const estimatedMinutes = counts
-        ? Math.ceil((counts.reviewBatchCount || 0) * 0.5)
+        ? estimateStudyMinutes(recentSessions, counts.reviewBatchCount || 0)
         : 0;
 
     // Daily goal: clear all reviews due today. New learning is a bonus, not part of the goal.

@@ -4,6 +4,7 @@ import test from 'node:test';
 import {
     buildHeatmapWeeks,
     buildWeeklyAccuracy,
+    estimateStudyMinutes,
     getHeatLevel,
     getWeekStart,
 } from '../src/utils/progressStats.js';
@@ -80,6 +81,43 @@ test('weekly accuracy ignores sessions without practiced words', () => {
     ], '2026-06-12', 1);
 
     assert.equal(result[0].accuracy, null);
+});
+
+test('estimate falls back to default pace without enough history', () => {
+    assert.equal(estimateStudyMinutes([], 10), 17); // 10 * 1.7
+    assert.equal(estimateStudyMinutes(null, 10), 17);
+    // 4 words of history is below the 5-word threshold
+    assert.equal(estimateStudyMinutes([
+        { new_count: 4, review_count: 0, duration_seconds: 60 },
+    ], 10), 17);
+});
+
+test('estimate uses the real per-word pace from recent sessions', () => {
+    // 20 words in 1200s -> 1 min/word
+    const sessions = [
+        { new_count: 0, review_count: 10, duration_seconds: 600 },
+        { new_count: 10, review_count: 0, duration_seconds: 600 },
+    ];
+
+    assert.equal(estimateStudyMinutes(sessions, 8), 8);
+});
+
+test('estimate clamps outlier paces', () => {
+    // Session left open: 10 words in 2 hours -> clamped to 5 min/word
+    assert.equal(estimateStudyMinutes([
+        { new_count: 0, review_count: 10, duration_seconds: 7200 },
+    ], 10), 50);
+    // Unrealistically fast -> clamped to 0.5 min/word
+    assert.equal(estimateStudyMinutes([
+        { new_count: 0, review_count: 10, duration_seconds: 10 },
+    ], 10), 5);
+});
+
+test('estimate returns zero for an empty batch and at least one minute otherwise', () => {
+    assert.equal(estimateStudyMinutes([], 0), 0);
+    assert.equal(estimateStudyMinutes([
+        { new_count: 0, review_count: 10, duration_seconds: 300 },
+    ], 1), 1);
 });
 
 test('weekly accuracy buckets sessions into their own weeks', () => {

@@ -355,11 +355,11 @@ export const useStudyStore = create(persist((set, get) => ({
         }
 
         if (phase === PHASE.NEW_LEARN) {
-            // New learning: each word does A then B sequentially
-            // We interleave: word1-A, word1-B, word2-A, word2-B, ...
+            // New learning: each word shows a presentation card (no pass/fail)
+            // then spelling: word1-learn, word1-B, word2-learn, word2-B, ...
             const queue = [];
             for (const w of words) {
-                queue.push({ ...w, _step: STEP.RECALL });
+                queue.push({ ...w, _step: STEP.LEARN });
                 queue.push({ ...w, _step: STEP.SPELLING });
             }
             set({
@@ -433,6 +433,17 @@ export const useStudyStore = create(persist((set, get) => ({
         set({ showAnswer: true });
         void get().saveActiveSession();
         console.log('show_answer');
+    },
+
+    /**
+     * Confirm the new-learn presentation card. No pass/fail: it affects
+     * neither stats, combo, relapse, nor level.
+     */
+    confirmLearn: () => {
+        const { currentWord, isFinishingPhase, isCompletingSession } = get();
+        if (!currentWord || isFinishingPhase || isCompletingSession) return;
+        console.log('learn_confirm');
+        get().advanceWord();
     },
 
     /**

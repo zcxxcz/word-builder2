@@ -160,6 +160,48 @@
     margin-bottom: 4px;
 }
 
+/* Learn card (new-word presentation) */
+.learn-meaning {
+    text-align: center;
+    font-size: 22px;
+    font-weight: 600;
+    color: var(--text-primary);
+    margin: 20px 0 12px;
+    padding: 16px;
+    background: var(--surface-dim);
+    border-radius: 12px;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.learn-example {
+    margin-bottom: 24px;
+}
+
+.learn-example-target {
+    color: var(--primary);
+    font-weight: 700;
+}
+
+.btn-learn-continue {
+    width: 100%;
+    padding: 16px;
+    background: var(--primary-gradient);
+    border: none;
+    border-radius: 14px;
+    font-size: 16px;
+    font-weight: 700;
+    color: white;
+    cursor: pointer;
+    transition: transform 0.15s;
+    box-shadow: var(--shadow-primary);
+}
+
+.btn-learn-continue:active {
+    transform: scale(0.98);
+}
+
 .card-eval-buttons {
     display: grid;
     grid-template-columns: 1fr 1fr;

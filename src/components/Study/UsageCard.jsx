@@ -1,15 +1,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { askUsageQuestion, getUsageExercise, gradeUsageAnswer } from '../../lib/deepseek';
+import { askUsageQuestion, gradeUsageAnswer } from '../../lib/deepseek';
 import { playCorrectSound, playWrongSound } from '../../lib/sfx';
 import { speak } from '../../lib/tts';
+import { consumeUsageExercise, getUsageDisplayMeaning } from '../../lib/usagePrefetch';
 import { useSettingsStore } from '../../stores/settingsStore';
 import { isEquivalentUsageAnswer } from '../../utils/usageAnswer';
 import './StudyCards.css';
-
-function getDisplayMeaning(word) {
-    if (word.all_meanings?.length > 0) return word.all_meanings[0];
-    return word.meaning_cn || '';
-}
 
 export default function UsageCard({ word, usageSceneMode, onSubmit, onSkip }) {
     const { settings } = useSettingsStore();
@@ -26,7 +22,7 @@ export default function UsageCard({ word, usageSceneMode, onSubmit, onSkip }) {
     const [asking, setAsking] = useState(false);
     const inputRef = useRef(null);
     const advanceLockRef = useRef(false);
-    const meaning = useMemo(() => getDisplayMeaning(word), [word]);
+    const meaning = useMemo(() => getUsageDisplayMeaning(word), [word]);
     const scorePercent = result ? Math.round(result.score * 100) : 0;
     const recommendedAnswer = result?.corrected_answer_en || exercise?.reference_answer_en || '';
     const referenceAnswer = exercise?.reference_answer_en || '';
@@ -52,7 +48,7 @@ export default function UsageCard({ word, usageSceneMode, onSubmit, onSkip }) {
         setAsking(false);
 
         try {
-            const data = await getUsageExercise(word.word, meaning, usageSceneMode);
+            const data = await consumeUsageExercise(word.word, meaning, usageSceneMode);
             setExercise(data);
             setTimeout(() => inputRef.current?.focus(), 0);
         } catch (err) {

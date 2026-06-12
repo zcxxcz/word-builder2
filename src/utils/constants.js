@@ -51,6 +51,7 @@ export const PHASE = {
 
 // Study step types
 export const STEP = {
+    LEARN: 'learn',         // New-learn presentation: 新词认识（无对错）
     RECALL: 'recall',       // Step A: 意思回想
     SPELLING: 'spelling',   // Step B: 拼写打字
     USAGE: 'usage',         // Step C: 场景应用

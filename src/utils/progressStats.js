@@ -50,6 +50,33 @@ export function getHeatLevel(count) {
 }
 
 /**
+ * Estimate study minutes for a batch from the user's recent real pace.
+ * Falls back to a per-word default (recall + spelling + usage) until there
+ * is enough history; pace is clamped against outliers such as sessions left
+ * open in the background.
+ */
+export function estimateStudyMinutes(recentSessions, wordCount, fallbackMinutesPerWord = 1.7) {
+    if (!wordCount || wordCount <= 0) return 0;
+
+    let totalSeconds = 0;
+    let totalWords = 0;
+    for (const session of recentSessions || []) {
+        const words = (session.new_count || 0) + (session.review_count || 0);
+        const seconds = session.duration_seconds || 0;
+        if (words <= 0 || seconds <= 0) continue;
+        totalWords += words;
+        totalSeconds += seconds;
+    }
+
+    let perWordMinutes = fallbackMinutesPerWord;
+    if (totalWords >= 5) {
+        perWordMinutes = Math.min(5, Math.max(0.5, totalSeconds / totalWords / 60));
+    }
+
+    return Math.max(1, Math.ceil(wordCount * perWordMinutes));
+}
+
+/**
  * Aggregate spelling accuracy per study week (Monday-first), weighted by
  * words practiced. Returns `weekCount` entries (oldest first):
  * { weekStart, accuracy (0-1 or null), words }.
