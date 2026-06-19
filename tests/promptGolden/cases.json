@@ -242,6 +242,23 @@
       },
       "expect": { "passed": true, "scoreAtLeast": 0.9 }
     },
+    {
+      "id": "grade-perfect-no-nitpick",
+      "action": "grade_usage_answer",
+      "note": "真实翻车案例（小红书配图截图，2026-06-16）：答案完全正确、推荐表达=学生答案，批改却幻觉出一条不存在的「首字母大写」建议。完全正确时只许肯定，不许挑刺。",
+      "input": {
+        "word": "one after another",
+        "meaning_cn": "一个接一个地",
+        "prompt_cn": "学生们一个接一个地离开了教室。",
+        "reference_answer_en": "The students left the classroom one after another.",
+        "answer_en": "Students left the classroom one after another."
+      },
+      "expect": {
+        "passed": true,
+        "scoreAtLeast": 0.95,
+        "feedbackMustNotMatch": ["建议", "注意", "首字母", "大写"]
+      }
+    },
 
     {
       "id": "explain-call-person-question",
