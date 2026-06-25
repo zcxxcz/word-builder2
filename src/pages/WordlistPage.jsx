@@ -1,14 +1,23 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuthStore } from '../stores/authStore';
 import { useSettingsStore } from '../stores/settingsStore';
 import { THEMES, useThemeStore } from '../stores/themeStore';
 import { supabase } from '../lib/supabase';
 import { generateWordContent } from '../lib/deepseek';
+import {
+    lookupVocabularyStage,
+    lookupVocabularyStages,
+} from '../lib/vocabularyProfile';
 import { upsertUsageExercise } from '../lib/usageExerciseCache';
 import { FLORR_AREAS, getFlorrRarity, isFlorrWordlist } from '../utils/florrTheme';
 import { isValidUsageExercise } from '../utils/usageExercise';
 import { normalizeUsageVariantIndex } from '../utils/usageVariant';
+import {
+    normalizeVocabularyWord,
+    VOCABULARY_STAGE_OPTIONS,
+} from '../utils/vocabularyProfile';
+import { expandWordKeyVariants } from '../utils/wordKeys';
 import { LEVEL_LABELS, LEVEL_SHORT_LABELS } from '../utils/constants';
 import './WordlistPage.css';
 
@@ -16,6 +25,26 @@ const normalizeWord = (word) => (word || '').trim().toLowerCase();
 const usageVariantIndexes = [0, 1];
 const usageVariantLabels = ['A', 'B'];
 const LEVEL_FILTERS = ['all', 'unlearned', 0, 1, 2, 3];
+const STAGE_FILTERS = [
+    { category: 'all', label: '全部' },
+    ...VOCABULARY_STAGE_OPTIONS,
+    { category: 'unclassified', label: '未分类' },
+];
+
+function VocabularyStageBadge({ result, loading }) {
+    if (loading) {
+        return <span className="vocabulary-stage-badge loading">识别中…</span>;
+    }
+    if (!result) return null;
+    return (
+        <span
+            className={`vocabulary-stage-badge ${result.status} ${result.category || ''}`}
+            aria-label={`词汇学段：${result.label}`}
+        >
+            {result.label}
+        </span>
+    );
+}
 
 export default function WordlistPage() {
     const { user } = useAuthStore();
@@ -23,6 +52,7 @@ export default function WordlistPage() {
     const { theme } = useThemeStore();
     const navigate = useNavigate();
     const isFlorrTheme = theme === THEMES.FLORR;
+    const loadWordsRequestRef = useRef(0);
 
     const [activeTab, setActiveTab] = useState('builtin');
     const [wordlists, setWordlists] = useState([]);
@@ -35,6 +65,9 @@ export default function WordlistPage() {
     const [wordLevels, setWordLevels] = useState(new Map());
     const [selectedWordIds, setSelectedWordIds] = useState([]);
     const [levelFilter, setLevelFilter] = useState('all');
+    const [stageFilter, setStageFilter] = useState('all');
+    const [wordStages, setWordStages] = useState(new Map());
+    const [stageLoading, setStageLoading] = useState(false);
     const [selectionError, setSelectionError] = useState('');
     const [loading, setLoading] = useState(true);
 
@@ -45,6 +78,9 @@ export default function WordlistPage() {
     const [spellingSuggestion, setSpellingSuggestion] = useState(null);
     const [generating, setGenerating] = useState(false);
     const [genError, setGenError] = useState('');
+    const [genNotice, setGenNotice] = useState('');
+    const [wordStage, setWordStage] = useState(null);
+    const [wordStageLoading, setWordStageLoading] = useState(false);
     const [saving, setSaving] = useState(false);
 
     // CSV import modal
@@ -99,9 +135,10 @@ export default function WordlistPage() {
         return () => clearTimeout(timer);
     }, [user]);
 
-    const loadStudiedWords = async (listWords) => {
+    const loadStudiedWords = async (listWords, requestId = loadWordsRequestRef.current) => {
         const wordKeys = [...new Set(listWords.map(w => normalizeWord(w.word)).filter(Boolean))];
         if (!user || wordKeys.length === 0) {
+            if (requestId !== loadWordsRequestRef.current) return;
             setStudiedWords(new Set());
             setWordLevels(new Map());
             return;
@@ -113,16 +150,22 @@ export default function WordlistPage() {
             .eq('user_id', user.id)
             .in('word', wordKeys);
 
+        if (requestId !== loadWordsRequestRef.current) return;
         setStudiedWords(new Set((data || []).map(s => normalizeWord(s.word))));
         setWordLevels(new Map((data || []).map(s => [normalizeWord(s.word), s.level || 0])));
     };
 
     const loadWords = async (list, isBuiltIn) => {
+        const requestId = loadWordsRequestRef.current + 1;
+        loadWordsRequestRef.current = requestId;
         setSelectedList(list.id);
         setSelectedListSource(isBuiltIn ? 'builtin' : 'custom');
         setSelectedListName(list.name);
         setSelectedWordIds([]);
         setLevelFilter('all');
+        setStageFilter('all');
+        setWordStages(new Map());
+        setStageLoading(!isBuiltIn);
         setSelectionError('');
 
         const table = isBuiltIn ? 'built_in_words' : 'custom_words';
@@ -137,12 +180,34 @@ export default function WordlistPage() {
         }
 
         const { data } = await query;
+        if (requestId !== loadWordsRequestRef.current) return;
         const listWords = data || [];
         setWords(listWords);
-        await loadStudiedWords(listWords);
+        const tasks = [loadStudiedWords(listWords, requestId)];
+        if (!isBuiltIn) {
+            tasks.push(
+                lookupVocabularyStages(listWords.map(word => word.word))
+                    .then(results => {
+                        if (requestId === loadWordsRequestRef.current) {
+                            setWordStages(results);
+                        }
+                    })
+                    .finally(() => {
+                        if (requestId === loadWordsRequestRef.current) {
+                            setStageLoading(false);
+                        }
+                    })
+            );
+        } else {
+            if (requestId === loadWordsRequestRef.current) {
+                setStageLoading(false);
+            }
+        }
+        await Promise.all(tasks);
     };
 
     const clearSelectedList = () => {
+        loadWordsRequestRef.current += 1;
         setSelectedList(null);
         setSelectedListSource(null);
         setSelectedListName('');
@@ -151,6 +216,9 @@ export default function WordlistPage() {
         setWordLevels(new Map());
         setSelectedWordIds([]);
         setLevelFilter('all');
+        setStageFilter('all');
+        setWordStages(new Map());
+        setStageLoading(false);
         setSelectionError('');
     };
 
@@ -239,6 +307,19 @@ export default function WordlistPage() {
         return studied && (wordLevels.get(normalizeWord(word.word)) || 0) === levelFilter;
     };
 
+    const getWordStage = (word) => (
+        wordStages.get(normalizeVocabularyWord(word.word)) || null
+    );
+
+    const matchesStageFilter = (word) => {
+        if (selectedListSource !== 'custom' || stageFilter === 'all') return true;
+        const result = getWordStage(word);
+        if (stageFilter === 'unclassified') {
+            return result?.status === 'not_found';
+        }
+        return result?.status === 'matched' && result.category === stageFilter;
+    };
+
     const throwOnError = ({ error }) => {
         if (error) throw error;
     };
@@ -268,6 +349,9 @@ export default function WordlistPage() {
         setGeneratedWord(null);
         setSpellingSuggestion(null);
         setGenError('');
+        setGenNotice('');
+        setWordStage(null);
+        setWordStageLoading(false);
     };
 
     const cacheUsageExercise = async (wordText, meaningText, referenceAnswerEn, usagePromptCn, variantIndex = 0) => {
@@ -373,18 +457,59 @@ export default function WordlistPage() {
         await migrateUsageExercises(oldWordKey, newWordKey);
     };
 
-    // AI word generation
+    const findExistingCustomWord = async (wordText) => {
+        const variants = expandWordKeyVariants([wordText]);
+        if (variants.length === 0) return null;
+
+        const { data, error } = await supabase
+            .from('custom_words')
+            .select('word, meaning_cn, phonetic, example')
+            .eq('user_id', user.id)
+            .in('word', variants)
+            .limit(1);
+        if (error) {
+            console.warn('Could not check for reusable custom-word content:', error.message);
+            return null;
+        }
+        return data?.[0] || null;
+    };
+
+    const loadWordStage = async (wordText) => {
+        setWordStageLoading(true);
+        const result = await lookupVocabularyStage(wordText);
+        setWordStage(result);
+        setWordStageLoading(false);
+        return result;
+    };
+
+    // Reuse saved content when possible; otherwise call AI once for content only.
     const handleGenerate = async () => {
         if (!addWordInput.trim()) return;
         setGenerating(true);
         setGenError('');
+        setGenNotice('');
         setGeneratedWord(null);
         setSpellingSuggestion(null);
+        setWordStage(null);
+        setWordStageLoading(true);
 
+        let stagePromise;
         try {
             const inputWord = addWordInput.trim();
+            stagePromise = lookupVocabularyStage(inputWord);
+            const existingWord = await findExistingCustomWord(inputWord);
+
+            if (existingWord) {
+                const stage = await stagePromise;
+                setWordStage(stage);
+                setGeneratedWord(makeGeneratedWord(existingWord.word, existingWord));
+                setGenNotice('已复用生词本中的释义、音标和例句，本次未调用 AI。');
+                return;
+            }
+
             const result = await generateWordContent(inputWord);
             const canonicalWord = (result.canonical_word || inputWord).trim();
+            setWordStage(await stagePromise);
 
             if (result.spelling_suspected && canonicalWord && normalizeWord(canonicalWord) !== normalizeWord(inputWord)) {
                 setSpellingSuggestion({
@@ -399,15 +524,23 @@ export default function WordlistPage() {
             setGenError(err.message);
             // Allow manual entry on failure
             setGeneratedWord(makeGeneratedWord(addWordInput.trim()));
+            setWordStage(stagePromise
+                ? await stagePromise
+                : await lookupVocabularyStage(addWordInput.trim()));
+        } finally {
+            setWordStageLoading(false);
+            setGenerating(false);
         }
-        setGenerating(false);
     };
 
-    const confirmSpellingSuggestion = (useSuggestedWord) => {
+    const confirmSpellingSuggestion = async (useSuggestedWord) => {
         if (!spellingSuggestion) return;
         const wordText = useSuggestedWord ? spellingSuggestion.suggestedWord : spellingSuggestion.originalWord;
         setGeneratedWord(makeGeneratedWord(wordText, spellingSuggestion.result));
         setSpellingSuggestion(null);
+        if (useSuggestedWord) {
+            await loadWordStage(wordText);
+        }
     };
 
     const handleSaveWord = async () => {
@@ -704,7 +837,7 @@ export default function WordlistPage() {
         loadWordlists();
     };
 
-    const visibleWords = words.filter(matchesLevelFilter);
+    const visibleWords = words.filter(matchesLevelFilter).filter(matchesStageFilter);
 
     // Group words by unit
     const wordsByUnit = {};
@@ -789,9 +922,28 @@ export default function WordlistPage() {
                             ))}
                         </div>
 
+                        {selectedListSource === 'custom' && (
+                            <div className="stage-filter-wrap">
+                                <div className="filter-label">按学段</div>
+                                <div className="stage-filter" aria-label="按学段筛选">
+                                    {STAGE_FILTERS.map(filter => (
+                                        <button
+                                            key={filter.category}
+                                            type="button"
+                                            className={`stage-filter-btn ${stageFilter === filter.category ? 'active' : ''}`}
+                                            onClick={() => setStageFilter(filter.category)}
+                                            disabled={stageLoading}
+                                        >
+                                            {filter.label}
+                                        </button>
+                                    ))}
+                                </div>
+                            </div>
+                        )}
+
                         {visibleWords.length === 0 && (
                             <div className="empty-state">
-                                <p>当前筛选下没有单词</p>
+                                <p>{stageLoading ? '正在识别学段…' : '当前筛选下没有单词'}</p>
                             </div>
                         )}
 
@@ -837,6 +989,14 @@ export default function WordlistPage() {
                                                 <div className="word-item-main">
                                                     <div className="word-item-en">{w.word}</div>
                                                     <div className="word-item-cn">{w.meaning_cn}</div>
+                                                    {selectedListSource === 'custom' && (
+                                                        <div className="word-item-stage">
+                                                            <VocabularyStageBadge
+                                                                result={getWordStage(w)}
+                                                                loading={stageLoading}
+                                                            />
+                                                        </div>
+                                                    )}
                                                 </div>
                                                 {status && (
                                                     <div
@@ -969,6 +1129,7 @@ export default function WordlistPage() {
                             </div>
 
                             {genError && <div className="form-error">{genError}</div>}
+                            {genNotice && <div className="form-notice">{genNotice}</div>}
 
                             {spellingSuggestion && (
                                 <div className="spelling-check">
@@ -994,6 +1155,12 @@ export default function WordlistPage() {
                                 </div>
                             )}
 
+                            {(wordStageLoading || wordStage) && (
+                                <div className="generated-word-stage">
+                                    <VocabularyStageBadge result={wordStage} loading={wordStageLoading} />
+                                </div>
+                            )}
+
                             {generatedWord && (
                                 <div className="gen-form">
                                     <div className="gen-field">
@@ -1002,6 +1169,12 @@ export default function WordlistPage() {
                                             type="text"
                                             value={generatedWord.word}
                                             onChange={e => setGeneratedWord({ ...generatedWord, word: e.target.value })}
+                                            onBlur={e => {
+                                                const nextWord = e.target.value.trim();
+                                                if (nextWord && normalizeVocabularyWord(nextWord) !== wordStage?.inputWord) {
+                                                    loadWordStage(nextWord);
+                                                }
+                                            }}
                                         />
                                     </div>
                                     <div className="gen-field">

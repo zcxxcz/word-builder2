@@ -55,6 +55,7 @@
    - 拼写训练：直接打字 → 判对错 → 错则强制纠正
    - 场景应用：系统给中文场景句 → 学生用目标词写英文整句 → AI 批改
 4. **生词"智能生成"（只输英文）**：
+   - 先通过本地版本化词汇索引识别最早学段，不使用 AI 判断词汇等级
    - 采用 DeepSeek API 生成中文释义、音标、例句
    - 发音兜底：Web Speech API TTS
 5. **学习战报与进度统计**
@@ -248,6 +249,17 @@ Step A/B 支持在电脑上按 **Enter** 进入下一步；Step C 支持 **Ctrl 
 
 生成后，用户可编辑所有字段再保存。
 
+生成内容前后独立查询共享只读的词汇索引：
+- 添加生词时只展示最早可靠学段：小学、初中、高中、大学四级或大学六级
+- 多来源命中按“小学 → 初中 → 高中 → 大学四级 → 大学六级”取最早分类
+- 优先按原样和导入别名精确匹配，包括官方词形、英美拼写、缩写、撇号及连字符/空格形式
+- 只有精确匹配完全失败后，才匹配常见复数、时态、比较级及少量不规则词形；短语只保守还原首词或末词，且候选必须实际命中导入索引，不做语义改写或自由拆分
+- 未命中显示“未分类”，索引不可用显示“识别暂不可用”
+- 所有自定义词表加载时分块批量查询学段，历史生词无需迁移即可显示最新标签，并支持按学段筛选
+- 学段标签不写入 `custom_words`，不逐词发起网络请求
+- 标签只作提示，不改变保存权限、学习队列或 SRS
+- 用户生词本已存在相同英文时复用已有内容，不调用 DeepSeek
+
 #### 9.2.2 生成规则（硬约束）
 - 中文释义：
   - 每条 ≤ 12 个汉字
@@ -271,6 +283,7 @@ Step A/B 支持在电脑上按 **Enter** 进入下一步；Step C 支持 **Ctrl 
 - 输入英文 → 点击"✨ 生成"
 - 如果 AI 高度确定输入疑似拼写错误，先展示建议拼写，由用户选择"改用建议词"或"仍保存原输入"；系统不得静默自动改词入库
 - 生成完成展示可编辑表单：word、meaning_cn、phonetic、example、场景 A/B 中文句和英文参考答案
+- 只展示本地词汇索引返回的简短学段徽标，不显示来源、常用度或建议文字
 - 保存到"生词本"（默认自定义词表，自动创建）
 
 #### 9.2.4 限流策略
@@ -352,6 +365,9 @@ Step A/B 支持在电脑上按 **Enter** 进入下一步；Step C 支持 **Ctrl 
 |------|------|---------|
 | `built_in_wordlists` | 内置词表（共享只读） | id, name, description |
 | `built_in_words` | 内置词汇 | id, wordlist_id, word, meaning_cn, unit, phonetic, example |
+| `vocabulary_sources` | 版本化词汇数据来源（共享只读） | source_key, source_type, stage_code, stage_rank, version_label, source_url, is_complete |
+| `vocabulary_memberships` | 词与教材/课标/考试来源的收录关系（共享只读） | source_key, canonical_word, word_form, coverage_label |
+| `word_frequencies` | 独立语料词频（共享只读） | word, source_key, zipf_frequency, frequency_per_million, commonness_band |
 | `custom_wordlists` | 自定义词表（用户级） | id, user_id, name, description |
 | `custom_words` | 自定义词汇（用户级） | id, user_id, wordlist_id, word, meaning_cn, phonetic, example |
 | `user_word_state` | 学习进度（user_id + word 唯一） | level, next_review_at, last_seen_at, wrong_count, correct_streak, next_usage_variant_index |
@@ -423,17 +439,18 @@ Step A/B 支持在电脑上按 **Enter** 进入下一步；Step C 支持 **Ctrl 
 2. 添加生词仅输入英文即可生成中文释义/音标/例句，且可编辑并保存
 3. 添加生词时如果 AI 高度确定疑似拼写错误，必须先由用户确认是否改用建议词，不得静默自动纠正后入库
 4. 自定义词表中的词条可编辑/删除；编辑英文拼写时保留并迁移该用户对应的学习进度和场景 A/B 缓存，删除词条不删除学习进度
-5. 学习过程无选择题：意思回想+自评，拼写必须打字
-6. 拼写错误必须提示正确答案并至少纠正一次，且进入当天回流
-7. SRS 生效：next_review 随表现正确变化
-8. 新学完成后自动发起一轮复习，体验与到期复习一致
-9. 复习型阶段包含场景应用题，三项均通过才升级；场景题未通过进入当天回流；同一词的场景 A/B 在后续练习中轮换；低于 100 分的场景批改可重做本场景，最终只按最后一次批改结果结算
-10. 今日页能显示全部到期复习数，且单次复习只取 review_cap 限制内的批次
-11. 今日战报与进度页数据正确
-12. 多设备同步：同一账号在不同浏览器登录后数据一致
-13. 支持数据导出/导入（JSON）
-14. 我的页提供可打开的 HTML 使用手册
-15. 移动端体验良好，支持内网手机访问
+5. 添加生词和所有自定义词表可显示并筛选小学、初中、高中、大学四级、大学六级标签；识别不得调用 AI，无可靠索引数据时显示未分类，仍允许生成和保存
+6. 学习过程无选择题：意思回想+自评，拼写必须打字
+7. 拼写错误必须提示正确答案并至少纠正一次，且进入当天回流
+8. SRS 生效：next_review 随表现正确变化
+9. 新学完成后自动发起一轮复习，体验与到期复习一致
+10. 复习型阶段包含场景应用题，三项均通过才升级；场景题未通过进入当天回流；同一词的场景 A/B 在后续练习中轮换；低于 100 分的场景批改可重做本场景，最终只按最后一次批改结果结算
+11. 今日页能显示全部到期复习数，且单次复习只取 review_cap 限制内的批次
+12. 今日战报与进度页数据正确
+13. 多设备同步：同一账号在不同浏览器登录后数据一致
+14. 支持数据导出/导入（JSON）
+15. 我的页提供可打开的 HTML 使用手册
+16. 移动端体验良好，支持内网手机访问
 
 ---
 
@@ -460,6 +477,7 @@ word-builder2/
 ├── supabase/
 │   ├── migration.sql
 │   ├── import_grade7a.sql, import_grade7b.sql, import_florr_petals.sql
+│   ├── import_vocabulary_index.sql, import_official_vocabulary.sql
 │   └── functions/deepseek-proxy/  (公开部署用)
 ├── public/
 │   ├── florr-logo.png

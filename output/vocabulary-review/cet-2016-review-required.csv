@@ -1,0 +1,12 @@
+﻿pdf_page,cet_level,source_family,proposed_forms,review_status,review_reason
+26,CET-4,appropriate１,appropriate,required,同形异义编号已移至 sense_number；同一拼写同时出现在 CET-4 与 CET-6 词族中
+26,CET-6,appropriate２,appropriate,required,同形异义编号已移至 sense_number；同一拼写同时出现在 CET-4 与 CET-6 词族中
+47,CET-4,converse１,converse,required,同形异义编号已移至 sense_number；同一拼写同时出现在 CET-4 与 CET-6 词族中
+47,CET-6,converse２,converse,required,同形异义编号已移至 sense_number；同一拼写同时出现在 CET-4 与 CET-6 词族中
+49,CET-6,coup(d􀆳état),coup | coup d'état,required,法语短语及撇号由 PDF 私有字形恢复
+54,CET-4,despatch,despatch,required,同一拼写同时出现在 CET-4 与 CET-6 词族中
+56,CET-6,dispatch/despatch,dispatch | despatch,required,斜杠并列形式；同一拼写同时出现在 CET-4 与 CET-6 词族中
+83,CET-6,invalid１,invalid,required,同形异义编号已移至 sense_number；同一拼写同时出现在 CET-4 与 CET-6 词族中
+83,CET-4,invalid２,invalid,required,同形异义编号已移至 sense_number；同一拼写同时出现在 CET-4 与 CET-6 词族中
+128,CET-4,staple１,staple,required,同形异义编号已移至 sense_number；同一拼写同时出现在 CET-4 与 CET-6 词族中
+128,CET-6,staple２,staple,required,同形异义编号已移至 sense_number；同一拼写同时出现在 CET-4 与 CET-6 词族中
