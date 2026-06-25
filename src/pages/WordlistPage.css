@@ -278,6 +278,48 @@
     color: var(--primary);
 }
 
+.stage-filter-wrap {
+    margin-bottom: 14px;
+}
+
+.filter-label {
+    color: var(--text-tertiary);
+    font-size: 12px;
+    font-weight: 700;
+    margin-bottom: 6px;
+}
+
+.stage-filter {
+    display: flex;
+    gap: 6px;
+    overflow-x: auto;
+    padding-bottom: 2px;
+}
+
+.stage-filter-btn {
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    background: var(--surface);
+    color: var(--text-secondary);
+    font-size: 12px;
+    font-weight: 700;
+    padding: 6px 10px;
+    cursor: pointer;
+    white-space: nowrap;
+    flex-shrink: 0;
+}
+
+.stage-filter-btn.active {
+    border-color: var(--primary);
+    background: var(--primary-alpha);
+    color: var(--primary);
+}
+
+.stage-filter-btn:disabled {
+    cursor: wait;
+    opacity: 0.55;
+}
+
 .unit-section {
     margin-bottom: 20px;
 }
@@ -386,6 +428,10 @@
     color: var(--text-secondary);
     font-size: 13px;
     margin-top: 2px;
+}
+
+.word-item-stage {
+    margin-top: 6px;
 }
 
 .word-status {
@@ -503,6 +549,71 @@
     border-radius: 10px;
     font-size: 14px;
     margin-bottom: 12px;
+}
+
+.form-notice {
+    background: var(--primary-alpha);
+    color: var(--primary);
+    padding: 12px 16px;
+    border-radius: 10px;
+    font-size: 14px;
+    margin-bottom: 12px;
+}
+
+.generated-word-stage {
+    display: flex;
+    align-items: center;
+    margin-bottom: 16px;
+}
+
+.vocabulary-stage-badge {
+    display: inline-flex;
+    align-items: center;
+    min-height: 24px;
+    border-radius: 999px;
+    background: var(--primary-alpha);
+    color: var(--primary);
+    font-size: 12px;
+    font-weight: 700;
+    line-height: 1;
+    padding: 6px 9px;
+    white-space: nowrap;
+}
+
+.vocabulary-stage-badge.not_found,
+.vocabulary-stage-badge.loading {
+    background: var(--surface-dim);
+    color: var(--text-tertiary);
+}
+
+.vocabulary-stage-badge.unavailable {
+    background: var(--error-bg);
+    color: var(--error);
+}
+
+.vocabulary-stage-badge.cet4,
+.vocabulary-stage-badge.cet6 {
+    background: rgba(124, 58, 237, 0.1);
+    color: #6d28d9;
+}
+
+.vocabulary-stage-badge.senior {
+    background: rgba(217, 119, 6, 0.1);
+    color: #b45309;
+}
+
+.vocabulary-stage-badge.primary {
+    background: rgba(5, 150, 105, 0.1);
+    color: #047857;
+}
+
+.vocabulary-stage-badge.junior {
+    background: var(--primary-alpha);
+    color: var(--primary);
+}
+
+.vocabulary-stage-badge.loading {
+    color: var(--text-secondary);
 }
 
 .gen-input-row {
