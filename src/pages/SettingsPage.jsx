@@ -1,11 +1,11 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useAuthStore } from '../stores/authStore';
 import { useSettingsStore } from '../stores/settingsStore';
 import { THEMES, useThemeStore } from '../stores/themeStore';
 import { supabase } from '../lib/supabase';
 import { upsertUsageExercise } from '../lib/usageExerciseCache';
-import { REVIEW_BATCH_LIMIT } from '../utils/constants';
+import { DAILY_NEW_LIMIT, REVIEW_BATCH_LIMIT } from '../utils/constants';
 import { getToday } from '../utils/srs';
 import { isValidUsageExercise } from '../utils/usageExercise';
 import { normalizeUsageSceneMode, normalizeUsageVariantIndex, USAGE_SCENE_MODE } from '../utils/usageVariant';
@@ -19,6 +19,9 @@ export default function SettingsPage() {
     const [clearStep, setClearStep] = useState(0);
     const [importMessage, setImportMessage] = useState('');
     const [isAdmin, setIsAdmin] = useState(false);
+    const [saveStatus, setSaveStatus] = useState('idle');
+    const saveTimerRef = useRef(null);
+    const saveRequestRef = useRef(0);
     const effectiveReviewCap = Math.min(settings.review_cap, REVIEW_BATCH_LIMIT);
 
     useEffect(() => {
@@ -38,8 +41,36 @@ export default function SettingsPage() {
         };
     }, [user]);
 
-    const handleSettingChange = (key, value) => {
-        updateSettings(user.id, { [key]: value });
+    useEffect(() => () => {
+        if (saveTimerRef.current) {
+            window.clearTimeout(saveTimerRef.current);
+        }
+    }, []);
+
+    const handleSettingChange = async (key, value) => {
+        if (!user?.id) return;
+
+        const requestId = saveRequestRef.current + 1;
+        saveRequestRef.current = requestId;
+        setSaveStatus('saving');
+
+        try {
+            await updateSettings(user.id, { [key]: value });
+            if (saveRequestRef.current !== requestId) return;
+
+            setSaveStatus('saved');
+            if (saveTimerRef.current) {
+                window.clearTimeout(saveTimerRef.current);
+            }
+            saveTimerRef.current = window.setTimeout(() => {
+                setSaveStatus('idle');
+            }, 1600);
+        } catch (err) {
+            console.error('Failed to save settings:', err);
+            if (saveRequestRef.current === requestId) {
+                setSaveStatus('error');
+            }
+        }
     };
 
     // Export JSON
@@ -203,7 +234,14 @@ export default function SettingsPage() {
 
     return (
         <div className="settings-page">
-            <header><h1>我的</h1></header>
+            <header className="settings-header">
+                <h1>我的</h1>
+                {saveStatus !== 'idle' && (
+                    <span className={`settings-save-status ${saveStatus}`}>
+                        {saveStatus === 'saving' ? '保存中...' : saveStatus === 'saved' ? '已保存' : '保存失败'}
+                    </span>
+                )}
+            </header>
 
             {/* User info */}
             <div className="settings-section">
@@ -248,7 +286,7 @@ export default function SettingsPage() {
                     <input
                         type="range"
                         min="3"
-                        max="30"
+                        max={DAILY_NEW_LIMIT}
                         value={settings.daily_new}
                         onChange={e => handleSettingChange('daily_new', parseInt(e.target.value))}
                         className="setting-slider"

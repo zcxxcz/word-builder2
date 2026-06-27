@@ -8,7 +8,30 @@
     font-size: 28px;
     font-weight: 700;
     color: var(--text-primary);
-    margin: 0 0 20px;
+    margin: 0;
+}
+
+.settings-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    margin-bottom: 20px;
+}
+
+.settings-save-status {
+    flex: 0 0 auto;
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--text-secondary);
+}
+
+.settings-save-status.saved {
+    color: var(--success);
+}
+
+.settings-save-status.error {
+    color: var(--error);
 }
 
 .settings-section {

@@ -1,11 +1,12 @@
 import { create } from 'zustand';
 import { supabase } from '../lib/supabase';
-import { DEFAULT_SETTINGS, REVIEW_BATCH_LIMIT } from '../utils/constants';
+import { DAILY_NEW_LIMIT, DEFAULT_SETTINGS, REVIEW_BATCH_LIMIT } from '../utils/constants';
 import { normalizeUsageSceneMode } from '../utils/usageVariant';
 
 function normalizeSettings(settings) {
     return {
         ...settings,
+        daily_new: Math.min(settings.daily_new ?? DEFAULT_SETTINGS.daily_new, DAILY_NEW_LIMIT),
         review_cap: Math.min(settings.review_cap ?? DEFAULT_SETTINGS.review_cap, REVIEW_BATCH_LIMIT),
         usage_scene_mode: normalizeUsageSceneMode(settings.usage_scene_mode),
     };
@@ -40,12 +41,13 @@ export const useSettingsStore = create((set, get) => ({
             await supabase.from('user_settings').upsert({
                 user_id: userId,
                 ...DEFAULT_SETTINGS,
-            });
+            }, { onConflict: 'user_id' });
             set({ settings: { ...DEFAULT_SETTINGS }, loaded: true });
         }
     },
 
     updateSettings: async (userId, updates) => {
+        const previousSettings = get().settings;
         const newSettings = normalizeSettings({ ...get().settings, ...updates });
         set({ settings: newSettings });
 
@@ -55,8 +57,13 @@ export const useSettingsStore = create((set, get) => ({
                 user_id: userId,
                 ...newSettings,
                 updated_at: new Date().toISOString(),
-            });
+            }, { onConflict: 'user_id' });
 
-        if (error) throw error;
+        if (error) {
+            if (get().settings === newSettings) {
+                set({ settings: previousSettings });
+            }
+            throw error;
+        }
     },
 }));

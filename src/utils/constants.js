@@ -22,6 +22,7 @@ export const LEVEL_SHORT_LABELS = {
     3: 'L3',
 };
 
+export const DAILY_NEW_LIMIT = 20;
 export const REVIEW_BATCH_LIMIT = 10;
 
 // Default daily task parameters
