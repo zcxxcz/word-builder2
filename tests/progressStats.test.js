@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 
 import {
+    buildThirtyMinuteStudyPlan,
     buildHeatmapWeeks,
     buildWeeklyAccuracy,
     estimateStudyMinutes,
@@ -118,6 +119,58 @@ test('estimate returns zero for an empty batch and at least one minute otherwise
     assert.equal(estimateStudyMinutes([
         { new_count: 0, review_count: 10, duration_seconds: 300 },
     ], 1), 1);
+});
+
+test('30-minute plan uses default pace without recent history', () => {
+    const plan = buildThirtyMinuteStudyPlan([], {
+        reviewCount: 20,
+        newCount: 100,
+    }, {
+        daily_new: 5,
+        review_cap: 8,
+        relapse_cap: 5,
+    });
+
+    assert.equal(plan.recommendedReviewCount, 8);
+    assert.equal(plan.recommendedNewCount, 0);
+    assert.equal(plan.hasDeferredReviews, true);
+    assert.ok(plan.totalMinutes <= 30);
+});
+
+test('30-minute plan lowers the review batch for slow recent pace', () => {
+    const plan = buildThirtyMinuteStudyPlan([
+        { new_count: 0, review_count: 10, duration_seconds: 3000 },
+    ], {
+        reviewCount: 20,
+        newCount: 100,
+    }, {
+        daily_new: 10,
+        review_cap: 10,
+        relapse_cap: 10,
+    });
+
+    assert.equal(plan.recommendedReviewCount, 6);
+    assert.equal(plan.recommendedNewCount, 0);
+    assert.equal(plan.deferredReviewCount, 14);
+    assert.equal(plan.totalMinutes, 30);
+});
+
+test('30-minute plan recommends new words only after review pressure fits the budget', () => {
+    const plan = buildThirtyMinuteStudyPlan([
+        { new_count: 0, review_count: 10, duration_seconds: 600 },
+    ], {
+        reviewCount: 4,
+        newCount: 20,
+    }, {
+        daily_new: 5,
+        review_cap: 8,
+        relapse_cap: 5,
+    });
+
+    assert.equal(plan.recommendedReviewCount, 4);
+    assert.equal(plan.hasDeferredReviews, false);
+    assert.equal(plan.recommendedNewCount, 5);
+    assert.ok(plan.totalMinutes <= 30);
 });
 
 test('weekly accuracy buckets sessions into their own weeks', () => {

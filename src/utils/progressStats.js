@@ -1,4 +1,15 @@
 import { addDaysToStudyDate } from './srs.js';
+import {
+    DAILY_NEW_LIMIT,
+    DEFAULT_SETTINGS,
+    REVIEW_BATCH_LIMIT,
+    STUDY_TIME_BUDGET_MINUTES,
+} from './constants.js';
+
+const DEFAULT_MINUTES_PER_REVIEW_WORD = 1.7;
+const MIN_PACE_MINUTES = 0.5;
+const MAX_PACE_MINUTES = 5;
+const NEW_WORD_REVIEW_WEIGHT = 5 / 3;
 
 function getWeekdayIndex(dateString) {
     const [year, month, day] = dateString.split('-').map(Number);
@@ -58,6 +69,11 @@ export function getHeatLevel(count) {
 export function estimateStudyMinutes(recentSessions, wordCount, fallbackMinutesPerWord = 1.7) {
     if (!wordCount || wordCount <= 0) return 0;
 
+    const perWordMinutes = getStudyPaceMinutes(recentSessions, fallbackMinutesPerWord);
+    return Math.max(1, Math.ceil(wordCount * perWordMinutes));
+}
+
+export function getStudyPaceMinutes(recentSessions, fallbackMinutesPerWord = DEFAULT_MINUTES_PER_REVIEW_WORD) {
     let totalSeconds = 0;
     let totalWords = 0;
     for (const session of recentSessions || []) {
@@ -68,12 +84,51 @@ export function estimateStudyMinutes(recentSessions, wordCount, fallbackMinutesP
         totalSeconds += seconds;
     }
 
-    let perWordMinutes = fallbackMinutesPerWord;
-    if (totalWords >= 5) {
-        perWordMinutes = Math.min(5, Math.max(0.5, totalSeconds / totalWords / 60));
-    }
+    if (totalWords < 5) return fallbackMinutesPerWord;
 
-    return Math.max(1, Math.ceil(wordCount * perWordMinutes));
+    return Math.min(MAX_PACE_MINUTES, Math.max(MIN_PACE_MINUTES, totalSeconds / totalWords / 60));
+}
+
+export function buildThirtyMinuteStudyPlan(
+    recentSessions,
+    counts,
+    settings = {},
+    targetMinutes = STUDY_TIME_BUDGET_MINUTES
+) {
+    const dueCount = Math.max(0, counts?.reviewCount || 0);
+    const availableNewCount = Math.max(0, counts?.newCount || 0);
+    const reviewCap = Math.min(settings.review_cap ?? REVIEW_BATCH_LIMIT, REVIEW_BATCH_LIMIT);
+    const dailyNewLimit = Math.min(settings.daily_new ?? DEFAULT_SETTINGS.daily_new, DAILY_NEW_LIMIT);
+    const paceMinutes = getStudyPaceMinutes(recentSessions);
+    const maxReviewsByTime = Math.max(1, Math.floor(targetMinutes / paceMinutes));
+    const recommendedReviewCount = dueCount > 0
+        ? Math.min(dueCount, reviewCap, maxReviewsByTime)
+        : 0;
+    const reviewMinutes = recommendedReviewCount > 0
+        ? Math.ceil(recommendedReviewCount * paceMinutes)
+        : 0;
+    const hasDeferredReviews = dueCount > recommendedReviewCount;
+    const remainingMinutes = Math.max(0, targetMinutes - reviewMinutes);
+    const minutesPerNewWord = paceMinutes * NEW_WORD_REVIEW_WEIGHT;
+    const recommendedNewCount = !hasDeferredReviews && remainingMinutes >= minutesPerNewWord
+        ? Math.min(availableNewCount, dailyNewLimit, Math.floor(remainingMinutes / minutesPerNewWord))
+        : 0;
+    const totalMinutes = Math.max(
+        recommendedReviewCount || recommendedNewCount ? 1 : 0,
+        Math.ceil((recommendedReviewCount * paceMinutes) + (recommendedNewCount * minutesPerNewWord))
+    );
+
+    return {
+        targetMinutes,
+        paceMinutes,
+        recommendedReviewCount,
+        recommendedNewCount,
+        reviewMinutes,
+        totalMinutes,
+        hasDeferredReviews,
+        deferredReviewCount: Math.max(0, dueCount - recommendedReviewCount),
+        shouldSuggestNewWords: recommendedNewCount > 0,
+    };
 }
 
 /**

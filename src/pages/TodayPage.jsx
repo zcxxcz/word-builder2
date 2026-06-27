@@ -6,7 +6,7 @@ import { THEMES, useThemeStore } from '../stores/themeStore';
 import { getTaskCounts } from '../utils/taskEngine';
 import { getStudyDateDaysAgo, getToday, STUDY_TIME_ZONE } from '../utils/srs';
 import { calculateStreak } from '../utils/streak';
-import { estimateStudyMinutes } from '../utils/progressStats';
+import { buildThirtyMinuteStudyPlan } from '../utils/progressStats';
 import { supabase } from '../lib/supabase';
 import './TodayPage.css';
 
@@ -95,7 +95,8 @@ export default function TodayPage() {
     };
 
     const startReview = () => {
-        navigate('/study?mode=review');
+        const cap = budgetPlan?.recommendedReviewCount || counts?.reviewBatchCount || 0;
+        navigate(cap > 0 ? `/study?mode=review&cap=${cap}` : '/study?mode=review');
     };
 
     const chooseNewWords = () => {
@@ -106,19 +107,26 @@ export default function TodayPage() {
         navigate('/study');
     };
 
-    const estimatedMinutes = counts
-        ? estimateStudyMinutes(recentSessions, counts.reviewBatchCount || 0)
-        : 0;
+    const budgetPlan = counts
+        ? buildThirtyMinuteStudyPlan(recentSessions, counts, settings)
+        : null;
+    const estimatedMinutes = budgetPlan?.totalMinutes || 0;
 
-    // Daily goal: clear all reviews due today. New learning is a bonus, not part of the goal.
+    // Daily goal: finish the recommended 30-minute review batch. New learning is a bonus.
     const reviewDoneToday = todaySessions.reduce((sum, s) => sum + (s.review_count || 0), 0);
     const newDoneToday = todaySessions.reduce((sum, s) => sum + (s.new_count || 0), 0);
     const remainingDue = counts?.reviewCount || 0;
-    const goalTotal = reviewDoneToday + remainingDue;
-    const goalPercent = goalTotal > 0
-        ? Math.min(100, Math.round((reviewDoneToday / goalTotal) * 100))
-        : 100;
-    const goalAchieved = goalTotal > 0 && remainingDue === 0;
+    const recommendedReviewCount = budgetPlan?.recommendedReviewCount || 0;
+    const goalTotal = Math.max(reviewDoneToday, recommendedReviewCount);
+    const goalAchieved = goalTotal > 0 && (
+        remainingDue === 0 ||
+        (reviewDoneToday > 0 && reviewDoneToday >= recommendedReviewCount)
+    );
+    const goalPercent = goalAchieved
+        ? 100
+        : goalTotal > 0
+            ? Math.min(100, Math.round((reviewDoneToday / goalTotal) * 100))
+            : 100;
 
     const RING_RADIUS = 30;
     const RING_CIRC = 2 * Math.PI * RING_RADIUS;
@@ -200,13 +208,22 @@ export default function TodayPage() {
                                 </>
                             ) : goalAchieved ? (
                                 <>
-                                    <strong>今日目标达成！</strong>
-                                    <span>到期复习已全部清空</span>
+                                    <strong>今日 30 分钟计划完成！</strong>
+                                    <span>
+                                        {remainingDue > 0
+                                            ? `还剩 ${remainingDue} 词，明天继续`
+                                            : '到期复习已完成'}
+                                    </span>
                                 </>
                             ) : (
                                 <>
-                                    <strong>今日目标：清空到期复习</strong>
-                                    <span>已完成 {reviewDoneToday} / {goalTotal}，还剩 {remainingDue} 词</span>
+                                    <strong>今日目标：完成 30 分钟计划</strong>
+                                    <span>
+                                        建议先复习 {recommendedReviewCount} 词
+                                        {budgetPlan?.hasDeferredReviews
+                                            ? `，剩余 ${budgetPlan.deferredReviewCount} 词明天继续`
+                                            : `，共待复习 ${remainingDue} 词`}
+                                    </span>
                                 </>
                             )}
                             {newDoneToday > 0 && (
@@ -228,7 +245,7 @@ export default function TodayPage() {
                         </div>
                         <div className="stat-card stat-time">
                             <div className="stat-number">{estimatedMinutes}</div>
-                            <div className="stat-label">{isFlorrTheme ? '探索时间' : '预计分钟'}</div>
+                            <div className="stat-label">{isFlorrTheme ? '探索时间' : '计划分钟'}</div>
                             <div className="stat-icon">⏱️</div>
                         </div>
                     </div>
@@ -247,7 +264,7 @@ export default function TodayPage() {
                                     <span className="btn-start-icon">🔄</span>
                                     <span>{isFlorrTheme ? '开始挑战' : '开始复习'}</span>
                                     <span className="btn-start-count">
-                                        本次 {counts?.reviewBatchCount || 0} / 共 {counts?.reviewCount || 0} 词
+                                        本次建议 {recommendedReviewCount} / 共 {counts?.reviewCount || 0} 词
                                     </span>
                                 </button>
                             )}
@@ -256,7 +273,11 @@ export default function TodayPage() {
                                     <span className="btn-start-icon">✨</span>
                                     <span>{isFlorrTheme ? '收集新花瓣' : '去词表选择新词'}</span>
                                     <span className="btn-start-count">
-                                        可新学 {counts?.newCount || 0} 词
+                                        {budgetPlan?.shouldSuggestNewWords
+                                            ? `今日可新学 ${budgetPlan.recommendedNewCount} 词`
+                                            : counts?.reviewCount > 0
+                                                ? '建议先不新学'
+                                                : `可新学 ${counts?.newCount || 0} 词`}
                                     </span>
                                 </button>
                             )}

@@ -123,9 +123,9 @@ CREATE TABLE IF NOT EXISTS sessions (
 CREATE TABLE IF NOT EXISTS user_settings (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   user_id UUID REFERENCES auth.users(id) ON DELETE CASCADE NOT NULL UNIQUE,
-  daily_new INTEGER DEFAULT 10,
-  review_cap INTEGER DEFAULT 10,
-  relapse_cap INTEGER DEFAULT 10,
+  daily_new INTEGER DEFAULT 5,
+  review_cap INTEGER DEFAULT 8,
+  relapse_cap INTEGER DEFAULT 5,
   tts_enabled BOOLEAN DEFAULT true,
   tts_rate FLOAT DEFAULT 1.0,
   sound_enabled BOOLEAN DEFAULT true,
@@ -176,7 +176,9 @@ ALTER TABLE user_settings ADD COLUMN IF NOT EXISTS daily_usage_question_count IN
 ALTER TABLE user_settings ADD COLUMN IF NOT EXISTS last_usage_question_date DATE;
 ALTER TABLE user_settings ADD COLUMN IF NOT EXISTS usage_scene_mode TEXT NOT NULL DEFAULT 'rotate';
 ALTER TABLE user_settings ADD COLUMN IF NOT EXISTS sound_enabled BOOLEAN DEFAULT true;
-ALTER TABLE user_settings ALTER COLUMN review_cap SET DEFAULT 10;
+ALTER TABLE user_settings ALTER COLUMN daily_new SET DEFAULT 5;
+ALTER TABLE user_settings ALTER COLUMN review_cap SET DEFAULT 8;
+ALTER TABLE user_settings ALTER COLUMN relapse_cap SET DEFAULT 5;
 ALTER TABLE user_word_state ADD COLUMN IF NOT EXISTS next_usage_variant_index INTEGER NOT NULL DEFAULT 0;
 ALTER TABLE user_usage_exercises ADD COLUMN IF NOT EXISTS variant_index INTEGER NOT NULL DEFAULT 0;
 ALTER TABLE user_usage_exercises DROP CONSTRAINT IF EXISTS user_usage_exercises_user_id_word_meaning_cn_key;

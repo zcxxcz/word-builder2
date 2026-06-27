@@ -24,17 +24,45 @@ export const LEVEL_SHORT_LABELS = {
 
 export const DAILY_NEW_LIMIT = 20;
 export const REVIEW_BATCH_LIMIT = 10;
+export const STUDY_TIME_BUDGET_MINUTES = 30;
 
 // Default daily task parameters
 export const DEFAULT_SETTINGS = {
-    daily_new: 10,
-    review_cap: REVIEW_BATCH_LIMIT,
-    relapse_cap: 10,
+    daily_new: 5,
+    review_cap: 8,
+    relapse_cap: 5,
     tts_enabled: true,
     tts_rate: 1.0,
     sound_enabled: true,
     usage_scene_mode: 'rotate',
 };
+
+export const STUDY_PRESETS = [
+    {
+        id: 'light',
+        label: '轻松',
+        description: '新学 3 · 复习 6 · 回流 3',
+        daily_new: 3,
+        review_cap: 6,
+        relapse_cap: 3,
+    },
+    {
+        id: 'standard',
+        label: '标准',
+        description: '新学 5 · 复习 8 · 回流 5',
+        daily_new: DEFAULT_SETTINGS.daily_new,
+        review_cap: DEFAULT_SETTINGS.review_cap,
+        relapse_cap: DEFAULT_SETTINGS.relapse_cap,
+    },
+    {
+        id: 'intensive',
+        label: '强化',
+        description: '新学 10 · 复习 10 · 回流 10',
+        daily_new: 10,
+        review_cap: REVIEW_BATCH_LIMIT,
+        relapse_cap: 10,
+    },
+];
 
 // DeepSeek AI daily generation limit per user
 export const AI_DAILY_LIMIT = 100;

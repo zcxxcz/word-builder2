@@ -5,7 +5,7 @@ import { useSettingsStore } from '../stores/settingsStore';
 import { THEMES, useThemeStore } from '../stores/themeStore';
 import { supabase } from '../lib/supabase';
 import { upsertUsageExercise } from '../lib/usageExerciseCache';
-import { DAILY_NEW_LIMIT, REVIEW_BATCH_LIMIT } from '../utils/constants';
+import { DAILY_NEW_LIMIT, REVIEW_BATCH_LIMIT, STUDY_PRESETS } from '../utils/constants';
 import { getToday } from '../utils/srs';
 import { isValidUsageExercise } from '../utils/usageExercise';
 import { normalizeUsageSceneMode, normalizeUsageVariantIndex, USAGE_SCENE_MODE } from '../utils/usageVariant';
@@ -47,7 +47,7 @@ export default function SettingsPage() {
         }
     }, []);
 
-    const handleSettingChange = async (key, value) => {
+    const saveSettings = async (updates) => {
         if (!user?.id) return;
 
         const requestId = saveRequestRef.current + 1;
@@ -55,7 +55,7 @@ export default function SettingsPage() {
         setSaveStatus('saving');
 
         try {
-            await updateSettings(user.id, { [key]: value });
+            await updateSettings(user.id, updates);
             if (saveRequestRef.current !== requestId) return;
 
             setSaveStatus('saved');
@@ -72,6 +72,24 @@ export default function SettingsPage() {
             }
         }
     };
+
+    const handleSettingChange = async (key, value) => {
+        await saveSettings({ [key]: value });
+    };
+
+    const handlePresetChange = async (preset) => {
+        await saveSettings({
+            daily_new: preset.daily_new,
+            review_cap: preset.review_cap,
+            relapse_cap: preset.relapse_cap,
+        });
+    };
+
+    const activePresetId = STUDY_PRESETS.find(preset => (
+        settings.daily_new === preset.daily_new &&
+        effectiveReviewCap === preset.review_cap &&
+        settings.relapse_cap === preset.relapse_cap
+    ))?.id;
 
     // Export JSON
     const handleExport = async () => {
@@ -278,6 +296,25 @@ export default function SettingsPage() {
             {/* Learning settings */}
             <div className="settings-section">
                 <h2>学习设置</h2>
+                <div className="setting-item setting-item-block">
+                    <div className="setting-label">
+                        <span>学习强度</span>
+                        <span className="setting-value">按 30 分钟目标推荐</span>
+                    </div>
+                    <div className="preset-grid" role="group" aria-label="学习强度">
+                        {STUDY_PRESETS.map(preset => (
+                            <button
+                                key={preset.id}
+                                type="button"
+                                className={`preset-option ${activePresetId === preset.id ? 'active' : ''}`}
+                                onClick={() => handlePresetChange(preset)}
+                            >
+                                <strong>{preset.label}</strong>
+                                <span>{preset.description}</span>
+                            </button>
+                        ))}
+                    </div>
+                </div>
                 <div className="setting-item">
                     <div className="setting-label">
                         <span>每日新学量</span>

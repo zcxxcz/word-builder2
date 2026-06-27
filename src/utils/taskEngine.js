@@ -1,5 +1,5 @@
 import { supabase } from '../lib/supabase';
-import { DAILY_NEW_LIMIT, REVIEW_BATCH_LIMIT } from './constants';
+import { DAILY_NEW_LIMIT, DEFAULT_SETTINGS, REVIEW_BATCH_LIMIT } from './constants';
 import { getToday, shuffle } from './srs';
 import { expandWordKeyVariants } from './wordKeys';
 
@@ -9,7 +9,7 @@ const getEffectiveReviewCap = (settings = {}) => (
     Math.min(settings.review_cap ?? REVIEW_BATCH_LIMIT, REVIEW_BATCH_LIMIT)
 );
 
-const getDailyNewLimit = (settings = {}) => Math.min(settings.daily_new ?? 10, DAILY_NEW_LIMIT);
+const getDailyNewLimit = (settings = {}) => Math.min(settings.daily_new ?? DEFAULT_SETTINGS.daily_new, DAILY_NEW_LIMIT);
 
 async function getStudiedWordSet(userId) {
     const { data, error } = await supabase

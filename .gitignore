@@ -1,6 +1,7 @@
 # Environment variables
 .env
 .env.*
+supabase/.temp/
 
 # Prompt golden-case run reports
 tests/promptGolden/reports/

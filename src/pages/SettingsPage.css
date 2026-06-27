@@ -143,6 +143,44 @@
     width: 100%;
 }
 
+.preset-grid {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 8px;
+}
+
+.preset-option {
+    min-width: 0;
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 10px 8px;
+    background: var(--surface-dim);
+    color: var(--text-primary);
+    cursor: pointer;
+    text-align: left;
+}
+
+.preset-option strong,
+.preset-option span {
+    display: block;
+}
+
+.preset-option strong {
+    font-size: 14px;
+}
+
+.preset-option span {
+    margin-top: 4px;
+    font-size: 11px;
+    line-height: 1.35;
+    color: var(--text-secondary);
+}
+
+.preset-option.active {
+    border-color: var(--primary);
+    background: var(--primary-alpha);
+}
+
 .setting-slider {
     width: 120px;
     accent-color: var(--primary);

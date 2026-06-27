@@ -18,7 +18,7 @@ import {
     VOCABULARY_STAGE_OPTIONS,
 } from '../utils/vocabularyProfile';
 import { expandWordKeyVariants } from '../utils/wordKeys';
-import { LEVEL_LABELS, LEVEL_SHORT_LABELS } from '../utils/constants';
+import { DEFAULT_SETTINGS, LEVEL_LABELS, LEVEL_SHORT_LABELS } from '../utils/constants';
 import './WordlistPage.css';
 
 const normalizeWord = (word) => (word || '').trim().toLowerCase();
@@ -97,7 +97,7 @@ export default function WordlistPage() {
     const [editForm, setEditForm] = useState(null);
     const [editError, setEditError] = useState('');
 
-    const dailyNewLimit = settings.daily_new || 10;
+    const dailyNewLimit = settings.daily_new || DEFAULT_SETTINGS.daily_new;
 
     const loadWordlists = async () => {
         if (!user) return;

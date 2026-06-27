@@ -2,7 +2,7 @@ import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import { recordAnalyticsEvent } from '../lib/analytics';
 import { supabase } from '../lib/supabase';
-import { PHASE, STEP } from '../utils/constants';
+import { DEFAULT_SETTINGS, PHASE, STEP } from '../utils/constants';
 import { calculateLevelUpdate, getToday, shuffle } from '../utils/srs';
 import { getNextUsageVariantIndex, normalizeUsageVariantIndex, shouldAdvanceUsageVariant } from '../utils/usageVariant';
 
@@ -764,7 +764,7 @@ export const useStudyStore = create(persist((set, get) => ({
             if (sessionType !== 'review' && newWords.length > 0) {
                 get().startPhase(PHASE.NEW_LEARN, newWords);
             } else if (effectiveRelapseWords.length > 0) {
-                get().startPhase(PHASE.RELAPSE, effectiveRelapseWords.slice(0, settings.relapse_cap || 10));
+                get().startPhase(PHASE.RELAPSE, effectiveRelapseWords.slice(0, settings.relapse_cap || DEFAULT_SETTINGS.relapse_cap));
             } else {
                 get().completeSession();
             }
@@ -777,7 +777,7 @@ export const useStudyStore = create(persist((set, get) => ({
             }
         } else if (phase === PHASE.NEW_REVIEW) {
             if (effectiveRelapseWords.length > 0) {
-                const { relapse_cap = 10 } = settings;
+                const { relapse_cap = DEFAULT_SETTINGS.relapse_cap } = settings;
                 get().startPhase(PHASE.RELAPSE, effectiveRelapseWords.slice(0, relapse_cap));
             } else {
                 get().completeSession();
@@ -920,7 +920,7 @@ export const useStudyStore = create(persist((set, get) => ({
     getTotalItems: () => {
         const { reviewWords, newWords, relapseWords } = get();
         const settings = get().sessionSettings || {};
-        const relapseItemCount = getRelapseItemCount(relapseWords, settings.relapse_cap || 10);
+        const relapseItemCount = getRelapseItemCount(relapseWords, settings.relapse_cap || DEFAULT_SETTINGS.relapse_cap);
         // Review/relapse: 3 steps. New: 2 learning steps + 3 review steps.
         return (reviewWords.length * 3) + (newWords.length * 5) + relapseItemCount;
     },
@@ -933,7 +933,7 @@ export const useStudyStore = create(persist((set, get) => ({
         const total = state.getTotalItems();
         const currentRemaining = state.currentWord ? state.queue.length + 1 : 0;
         const settings = state.sessionSettings || {};
-        const relapseItemCount = getRelapseItemCount(state.relapseWords, settings.relapse_cap || 10);
+        const relapseItemCount = getRelapseItemCount(state.relapseWords, settings.relapse_cap || DEFAULT_SETTINGS.relapse_cap);
 
         let futureRemaining = 0;
         if (state.phase === PHASE.REVIEW) {

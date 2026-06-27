@@ -5,7 +5,7 @@ import { useSettingsStore } from '../stores/settingsStore';
 import { useStudyStore } from '../stores/studyStore';
 import { THEMES, useThemeStore } from '../stores/themeStore';
 import { generateNewLearningQueue, generateReviewQueue } from '../utils/taskEngine';
-import { PHASE, STEP } from '../utils/constants';
+import { DEFAULT_SETTINGS, PHASE, REVIEW_BATCH_LIMIT, STEP } from '../utils/constants';
 import { getStudyDateDaysAgo, getToday } from '../utils/srs';
 import { calculateStreak } from '../utils/streak';
 import { supabase } from '../lib/supabase';
@@ -76,7 +76,16 @@ export default function StudyPage() {
             study.setSessionSettings(settings);
 
             if (mode === 'review') {
-                const { reviewWords } = await generateReviewQueue(settings, user.id);
+                const requestedCap = Number.parseInt(searchParams.get('cap') || '', 10);
+                const effectiveCap = Number.isFinite(requestedCap)
+                    ? Math.max(1, Math.min(requestedCap, settings.review_cap || REVIEW_BATCH_LIMIT))
+                    : settings.review_cap || DEFAULT_SETTINGS.review_cap;
+                const sessionSettings = {
+                    ...settings,
+                    review_cap: effectiveCap,
+                };
+                study.setSessionSettings(sessionSettings);
+                const { reviewWords } = await generateReviewQueue(sessionSettings, user.id);
 
                 if (reviewWords.length === 0) {
                     setError('当前没有到期复习的单词！');
