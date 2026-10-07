@@ -44,3 +44,10 @@ Run `npm run lint` after code changes. Run `npm run build` when routing, deploym
 
 - Keep `README.md` aligned with current setup, routes, env names, and Supabase initialization.
 - Keep `requirementV1.md` as product/behavior reference; if implementation diverges, update the stale factual statement instead of adding a changelog note.
+
+## 自动发布约定
+
+- 公开发布流程见 README 的“统一发布与内容索引”。用户要求发布或完成可上线改动时，检查通过后可自动发布。
+- 使用独立任务分支；只提交本任务文件，工作区干净后运行 npm run publish。脚本等待 PR 检查和部署并刷新总入口。不得强制推送。
+- 新增公开内容更新 publish.json；textPaths 只列公开正文，不列环境文件、私人记录或账号数据。
+- 业务测试仍按本仓库要求执行。不要把数据库迁移塞进 Pages 工作流。
