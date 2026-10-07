@@ -1,0 +1,21 @@
+{
+  "version": 1,
+  "catalog": "https://zcxxcz.github.io/word-builder2/catalog.json",
+  "records": [
+    {
+      "id": "word-builder",
+      "title": "单词大师",
+      "type": "应用",
+      "summary": "意思回想、拼写输出与间隔复习，让英语学习循序渐进。",
+      "tags": [
+        "英语"
+      ],
+      "url": "https://zcxxcz.github.io/word-builder2/",
+      "updated": "2026-10-07",
+      "featured": true,
+      "textPaths": [
+        "public/user-manual.html"
+      ]
+    }
+  ]
+}
