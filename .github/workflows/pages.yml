@@ -42,11 +42,16 @@ jobs:
       group: pages-deploy
       cancel-in-progress: false
     permissions:
+      contents: read
       pages: write
       id-token: write
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
     steps:
+      - name: Refuse outdated deployment
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: test "$(gh api repos/${{ github.repository }}/commits/main --jq .sha)" = "$GITHUB_SHA"
       - uses: actions/deploy-pages@v4
         id: deployment
